@@ -14,7 +14,7 @@ object GoDocCliInstaller {
         ApplicationManager.getApplication().invokeLater {
             val answer = Messages.showYesNoDialog(
                 project,
-                "go-doc is not available on PATH.\n\nInstall it now with:\n\ngo install github.com/donseba/go-doc@latest",
+                "go-doc was not found by GoLand.\n\nInstall it now with:\n\ngo install github.com/donseba/go-doc@latest",
                 "Install go-doc CLI",
                 "Install",
                 "Cancel",
