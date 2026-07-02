@@ -34,18 +34,12 @@ object GoDocIndexer {
     }
 
     fun run(root: File, outFile: File): ProcessResult {
-        val commands = listOf(
-            listOf("go-doc", "index", "-o", outFile.path, "."),
-            listOf("go-doc.exe", "index", "-o", outFile.path, "."),
-        )
+        val commands = executableCommands("go-doc", "index", "-o", outFile.path, ".")
         return runCommands(root, commands, 60, "go-doc index timed out after 60 seconds")
     }
 
     fun runStdout(root: File): ProcessResult {
-        val commands = listOf(
-            listOf("go-doc", "index"),
-            listOf("go-doc.exe", "index"),
-        )
+        val commands = executableCommands("go-doc", "index")
         return runCommands(root, commands, 60, "go-doc index timed out after 60 seconds")
     }
 
@@ -151,10 +145,7 @@ object GoDocIndexer {
     }
 
     fun install(root: File): ProcessResult {
-        val commands = listOf(
-            listOf("go", "install", "github.com/donseba/go-doc@latest"),
-            listOf("go.exe", "install", "github.com/donseba/go-doc@latest"),
-        )
+        val commands = executableCommands("go", "install", "github.com/donseba/go-doc@latest")
 
         var lastError = ""
         var executableMissing = false
@@ -209,7 +200,7 @@ object GoDocIndexer {
             cachedGoRoot = fromEnv
             return fromEnv
         }
-        val commands = listOf(listOf("go", "env", "GOROOT"), listOf("go.exe", "env", "GOROOT"))
+        val commands = executableCommands("go", "env", "GOROOT")
         for (command in commands) {
             try {
                 val process = ProcessBuilder(command)
@@ -235,6 +226,15 @@ object GoDocIndexer {
     fun rememberLspExecutable(command: String, root: File) {
         lastLspExecutable = command
         lastLspVersion = commandVersion(command, root)
+    }
+
+    private fun executableCommands(executable: String, vararg args: String): List<List<String>> {
+        val executables = if (isWindows()) listOf(executable, "$executable.exe") else listOf(executable)
+        return executables.map { listOf(it, *args) }
+    }
+
+    private fun isWindows(): Boolean {
+        return System.getProperty("os.name").lowercase().contains("win")
     }
 
     data class ProcessResult(
