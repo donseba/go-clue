@@ -17,7 +17,6 @@ import java.awt.Font
 import java.io.File
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
-import java.util.concurrent.TimeUnit
 
 internal class GoDocLspServerSupportProvider : LspServerSupportProvider {
     override fun fileOpened(
@@ -88,8 +87,10 @@ private fun clickableKey(name: String, color: JBColor): TextAttributesKey {
 }
 
 private fun goDocLspExecutable(root: String): String {
-    if (!isWindows()) return "go-doc"
-    val installed = findGoDocExecutable(root) ?: return "go-doc"
+    val executable = GoDocIndexer.goDocExecutable(File(root))
+    if (!isWindows()) return executable
+
+    val installed = File(executable).takeIf { it.isAbsolute && it.isFile } ?: return executable
 
     return try {
         val cacheDir = File(System.getProperty("java.io.tmpdir"), "go-doc-goland-lsp")
@@ -101,29 +102,6 @@ private fun goDocLspExecutable(root: String): String {
     } catch (_: Exception) {
         installed.absolutePath
     }
-}
-
-private fun findGoDocExecutable(root: String): File? {
-    val locators = if (isWindows()) listOf("where.exe", "where") else listOf("which")
-    for (locator in locators) {
-        try {
-            val process = ProcessBuilder(locator, "go-doc")
-                .directory(File(root))
-                .redirectErrorStream(true)
-                .start()
-            if (!process.waitFor(5, TimeUnit.SECONDS)) {
-                process.destroyForcibly()
-                continue
-            }
-            process.inputStream.bufferedReader().readLines()
-                .map { File(it.trim()) }
-                .firstOrNull { it.isFile }
-                ?.let { return it }
-        } catch (_: Exception) {
-            continue
-        }
-    }
-    return null
 }
 
 private fun cleanupOldLspCopies(cacheDir: File) {

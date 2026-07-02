@@ -34,12 +34,12 @@ object GoDocIndexer {
     }
 
     fun run(root: File, outFile: File): ProcessResult {
-        val commands = executableCommands("go-doc", "index", "-o", outFile.path, ".")
+        val commands = executableCommands(root, "go-doc", "index", "-o", outFile.path, ".")
         return runCommands(root, commands, 60, "go-doc index timed out after 60 seconds")
     }
 
     fun runStdout(root: File): ProcessResult {
-        val commands = executableCommands("go-doc", "index")
+        val commands = executableCommands(root, "go-doc", "index")
         return runCommands(root, commands, 60, "go-doc index timed out after 60 seconds")
     }
 
@@ -74,7 +74,7 @@ object GoDocIndexer {
         return ProcessResult(
             1,
             "",
-            "Could not run go-doc from PATH. Install it with: go install github.com/donseba/go-doc@latest\n$lastError",
+            "Could not find go-doc. Install it with: go install github.com/donseba/go-doc@latest\n$lastError",
             missingGoDoc = executableMissing,
         )
     }
@@ -145,7 +145,7 @@ object GoDocIndexer {
     }
 
     fun install(root: File): ProcessResult {
-        val commands = executableCommands("go", "install", "github.com/donseba/go-doc@latest")
+        val commands = executableCommands(root, "go", "install", "github.com/donseba/go-doc@latest")
 
         var lastError = ""
         var executableMissing = false
@@ -172,14 +172,15 @@ object GoDocIndexer {
         return ProcessResult(
             1,
             "",
-            "Could not run Go from PATH. Install Go or add it to PATH before installing go-doc.\n$lastError",
+            "Could not find Go. Install Go or configure GoLand so Go is available before installing go-doc.\n$lastError",
             missingGo = executableMissing,
         )
     }
 
     fun commandVersion(command: String, root: File): String {
+        val resolvedCommand = if (File(command).isAbsolute) command else findExecutable(root, command)?.absolutePath ?: command
         return try {
-            val process = ProcessBuilder(command, "version")
+            val process = ProcessBuilder(resolvedCommand, "version")
                 .directory(root)
                 .redirectErrorStream(true)
                 .start()
@@ -200,7 +201,7 @@ object GoDocIndexer {
             cachedGoRoot = fromEnv
             return fromEnv
         }
-        val commands = executableCommands("go", "env", "GOROOT")
+        val commands = executableCommands(root, "go", "env", "GOROOT")
         for (command in commands) {
             try {
                 val process = ProcessBuilder(command)
@@ -228,9 +229,90 @@ object GoDocIndexer {
         lastLspVersion = commandVersion(command, root)
     }
 
-    private fun executableCommands(executable: String, vararg args: String): List<List<String>> {
-        val executables = if (isWindows()) listOf(executable, "$executable.exe") else listOf(executable)
+    fun goDocExecutable(root: File): String {
+        return findExecutable(root, "go-doc")?.absolutePath ?: platformExecutableNames("go-doc").first()
+    }
+
+    private fun executableCommands(root: File, executable: String, vararg args: String): List<List<String>> {
+        val executables = buildList {
+            addAll(platformExecutableNames(executable))
+            when (executable) {
+                "go" -> addAll(goExecutableCandidates())
+                "go-doc" -> addAll(goDocExecutableCandidates(root))
+            }
+        }.distinct()
         return executables.map { listOf(it, *args) }
+    }
+
+    private fun findExecutable(root: File, executable: String): File? {
+        return executableCommands(root, executable).asSequence()
+            .map { File(it.first()) }
+            .filter { it.isAbsolute && it.isFile && it.canExecute() }
+            .firstOrNull()
+    }
+
+    private fun platformExecutableNames(executable: String): List<String> {
+        return if (isWindows()) listOf(executable, "$executable.exe") else listOf(executable)
+    }
+
+    private fun goExecutableCandidates(): List<String> {
+        val names = platformExecutableNames("go")
+        return buildList {
+            System.getenv("GOROOT")?.takeIf { it.isNotBlank() }?.let { goRoot ->
+                names.forEach { add(File(File(goRoot, "bin"), it).path) }
+            }
+            if (isWindows()) {
+                listOf("ProgramFiles", "ProgramFiles(x86)").forEach { env ->
+                    System.getenv(env)?.takeIf { it.isNotBlank() }?.let { base ->
+                        names.forEach { add(File(File(base, "Go\\bin"), it).path) }
+                    }
+                }
+            } else {
+                listOf("/usr/local/go/bin", "/opt/homebrew/bin", "/usr/local/bin", "/opt/local/bin")
+                    .forEach { dir -> names.forEach { add(File(dir, it).path) } }
+            }
+        }.filter { File(it).isFile && File(it).canExecute() }
+    }
+
+    private fun goDocExecutableCandidates(root: File): List<String> {
+        val names = platformExecutableNames("go-doc")
+        val paths = buildList {
+            System.getenv("GOBIN")?.takeIf { it.isNotBlank() }?.let { add(it) }
+            System.getenv("GOPATH")
+                ?.split(File.pathSeparator)
+                ?.filter { it.isNotBlank() }
+                ?.forEach { add(File(it, "bin").path) }
+            goEnvValue(root, "GOBIN")?.takeIf { it.isNotBlank() }?.let { add(it) }
+            goEnvValue(root, "GOPATH")
+                ?.split(File.pathSeparator)
+                ?.filter { it.isNotBlank() }
+                ?.forEach { add(File(it, "bin").path) }
+            System.getProperty("user.home")?.takeIf { it.isNotBlank() }?.let { add(File(it, "go/bin").path) }
+        }.distinct()
+
+        return paths
+            .flatMap { dir -> names.map { File(dir, it).path } }
+            .filter { File(it).isFile && File(it).canExecute() }
+    }
+
+    private fun goEnvValue(root: File, name: String): String? {
+        for (command in executableCommands(root, "go", "env", name)) {
+            try {
+                val process = ProcessBuilder(command)
+                    .directory(root)
+                    .redirectErrorStream(true)
+                    .start()
+                if (!process.waitFor(5, TimeUnit.SECONDS)) {
+                    process.destroyForcibly()
+                    continue
+                }
+                val value = process.inputStream.bufferedReader().readText().trim()
+                if (value.isNotBlank()) return value
+            } catch (_: Exception) {
+                continue
+            }
+        }
+        return null
     }
 
     private fun isWindows(): Boolean {
