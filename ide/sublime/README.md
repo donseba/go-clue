@@ -1,6 +1,6 @@
-# go-doc for Sublime Text
+# go-clue for Sublime Text
 
-Sublime Text package for typed Go templates powered by `go-doc lsp`.
+Sublime Text package for typed Go templates powered by `go-clue lsp`.
 
 The package is intentionally small: syntax highlighting lives here, while
 completion, diagnostics, hover, navigation, document symbols, and semantic
@@ -10,10 +10,10 @@ tokens come from the language server.
 
 Install Sublime's `LSP` package through Package Control.
 
-Install `go-doc` on your PATH:
+Install `go-clue` on your PATH:
 
 ```bash
-go install github.com/donseba/go-doc@latest
+go install github.com/donseba/go-clue@main
 ```
 
 ## Install
@@ -24,7 +24,7 @@ Build the package from the repository root:
 task build:sublime
 ```
 
-Then install `dist/go-doc-sublime-*.sublime-package` into Sublime Text's
+Then install `dist/go-clue-sublime-*.sublime-package` into Sublime Text's
 `Installed Packages` folder.
 
 On Windows this is usually:
@@ -37,10 +37,10 @@ Restart Sublime Text, open a `.gohtml` or `.tmpl` file in a Go module, and check
 the LSP status. The language server command is:
 
 ```json
-["go-doc", "lsp"]
+["go-clue", "lsp"]
 ```
 
-Disable go-doc for one project with `.go-doc/config.json`:
+Disable go-clue for one project with `.go-clue/config.json`:
 
 ```json
 {
@@ -63,12 +63,12 @@ Template contracts use `@model`:
 
 `@model Page ...` is the editor-side entrance of the contract. Runtime code
 must still register a real `Page` template accessor before parsing, usually
-with go-doc's optional renderer. For plain `tmpl.Execute(w, page)` templates,
+with go-clue's optional renderer. For plain `tmpl.Execute(w, page)` templates,
 use `@dot` and `{{ .Title }}` instead.
 
 ## LSP Features
 
-The same `go-doc lsp` server powers completion, diagnostics, hover,
+The same `go-clue lsp` server powers completion, diagnostics, hover,
 go-to-definition, semantic tokens, and document symbols. It understands
 `@model`, `@dot`, `@func`, range/with dot context, typed function returns,
 template includes, named defines, and block calls.

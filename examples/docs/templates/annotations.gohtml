@@ -12,7 +12,7 @@
 <h2>Runtime side</h2>
 <p><code>@model</code> is the recommended convention for page or fragment data. It is not a magic keyword: any non-special annotation with a name and type becomes a typed root. The editor learns the type from the annotation, but runtime rendering still needs a value registered under that name.</p>
 <p><code>@dot</code> is the contract for normal dot data. Use it when your application executes a template with <code>tmpl.Execute(w, value)</code> or passes dot into a child template.</p>
-<p>Custom annotation names such as <code>@interaction</code>, <code>@component</code>, or <code>@struct</code> let a project describe framework or application-provided names without go-doc depending on that framework.</p>
+<p>Custom annotation names such as <code>@interaction</code>, <code>@component</code>, or <code>@struct</code> let a project describe framework or application-provided names without go-clue depending on that framework.</p>
 
 <h2>Functions can return complex values</h2>
 <pre><code>{{`{{ with firstUser }}

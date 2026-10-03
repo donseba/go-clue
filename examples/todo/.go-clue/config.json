@@ -1,0 +1,12 @@
+{
+  "enabled": true,
+  "include": ["/"],
+  "exclude": ["vendor"],
+  "writeIndex": false,
+  "functions": {
+    "add": "github.com/donseba/go-clue/examples/todo.Add",
+    "sub": "github.com/donseba/go-clue/examples/todo.Sub",
+    "div": "github.com/donseba/go-clue/examples/todo.Div",
+    "mul": "github.com/donseba/go-clue/examples/todo.Mul"
+  }
+}

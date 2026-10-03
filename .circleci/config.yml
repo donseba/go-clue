@@ -41,7 +41,7 @@ jobs:
           command: bash scripts/publish-github-release.sh "${CIRCLE_TAG}"
       - store_artifacts:
           path: dist
-          destination: go-doc-dist
+          destination: go-clue-dist
 
 workflows:
   test:

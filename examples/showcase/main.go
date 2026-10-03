@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/donseba/go-doc/renderer"
+	"github.com/donseba/go-clue/renderer"
 )
 
 type ShowcasePage struct {
@@ -99,7 +99,7 @@ func main() {
 	mux.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir(staticBase()))))
 
 	addr := "localhost:8102"
-	log.Printf("go-doc showcase running on http://%s", addr)
+	log.Printf("go-clue showcase running on http://%s", addr)
 	log.Fatal(http.ListenAndServe(addr, mux))
 }
 

@@ -7,14 +7,14 @@ SOURCE="${ROOT}/ide/neovim"
 VERSION="$(sed -nE 's/^[[:space:]]*"version"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/p' "${ROOT}/ide/vscode/package.json" | head -n 1)"
 
 if [[ -z "${VERSION}" ]]; then
-  echo "could not resolve go-doc package version" >&2
+  echo "could not resolve go-clue package version" >&2
   exit 1
 fi
 
 mkdir -p "${DIST}"
-rm -f "${DIST}"/go-doc-neovim*.zip
+rm -f "${DIST}"/go-clue-neovim*.zip
 
 (
   cd "${SOURCE}"
-  zip -qr "${DIST}/go-doc-neovim-${VERSION}.zip" .
+  zip -qr "${DIST}/go-clue-neovim-${VERSION}.zip" .
 )

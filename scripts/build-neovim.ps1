@@ -5,10 +5,10 @@ $dist = Join-Path $root "dist"
 $source = Join-Path $root "ide\neovim"
 $version = (Get-Content (Join-Path $root "ide\vscode\package.json") | ConvertFrom-Json).version
 if (-not $version) {
-    throw "could not resolve go-doc package version"
+    throw "could not resolve go-clue package version"
 }
-$out = Join-Path $dist "go-doc-neovim-$version.zip"
+$out = Join-Path $dist "go-clue-neovim-$version.zip"
 
 New-Item -ItemType Directory -Force $dist | Out-Null
-Get-ChildItem $dist -Filter "go-doc-neovim*.zip" -ErrorAction SilentlyContinue | Remove-Item -Force
+Get-ChildItem $dist -Filter "go-clue-neovim*.zip" -ErrorAction SilentlyContinue | Remove-Item -Force
 Compress-Archive -Path (Join-Path $source "*") -DestinationPath $out -Force

@@ -5,7 +5,7 @@
 </div>
 
 <h2>Model access</h2>
-<p><code>@model</code> declares a named accessor. That name must also exist at runtime. go-doc's renderer creates it by registering a template function with the same name before parsing.</p>
+<p><code>@model</code> declares a named accessor. That name must also exist at runtime. go-clue's renderer creates it by registering a template function with the same name before parsing.</p>
 <pre><code>&#123;&#123;/*
 &#64;model Page github.com/example/app.TodoPage
 */&#125;&#125;
@@ -39,7 +39,7 @@ _, _ = tmpl.ParseFiles("templates/main.gohtml")`}}</code></pre>
 
 &lt;p&gt;&#123;&#123; (userByID 42).Email &#125;&#125;&lt;/p&gt;</code></pre>
 
-<p><code>@func</code> lets go-doc understand custom template functions, including argument checks and return types. If a function returns a struct, completion continues through <code>with</code> blocks and parenthesized calls.</p>
+<p><code>@func</code> lets go-clue understand custom template functions, including argument checks and return types. If a function returns a struct, completion continues through <code>with</code> blocks and parenthesized calls.</p>
 
 <h2>Typed roots</h2>
 <p>Any non-special annotation with a name and type is a typed root. Typed roots complete, hover, navigate, and diagnose through the same engine. Use <code>@model</code> as the convention for page or fragment data. Use project vocabulary such as <code>@interaction</code>, <code>@component</code>, or <code>@struct</code> for names supplied by a renderer, framework, component system, or other runtime helper layer.</p>
@@ -72,7 +72,7 @@ _, _ = tmpl.ParseFiles("templates/main.gohtml")`}}</code></pre>
 <p>Set <code>symbolStrictMode: true</code> when you want typo protection for annotation names. In strict mode, <code>@jimmy Button github.com/example/ui.Button</code> warns unless <code>jimmy</code> is listed in <code>symbolAnnotations</code>. Use <code>@func</code> instead when the name is callable and you want arity, argument, pipeline, and return-type checks.</p>
 
 <h2>The tunnel</h2>
-<p>Every contract has two sides. The template comment is the entrance: it documents what the template expects. The runtime registration is the exit: it makes that name or function actually available to <code>html/template</code>. go-doc can explain the tunnel, but your application still has to connect both ends.</p>
+<p>Every contract has two sides. The template comment is the entrance: it documents what the template expects. The runtime registration is the exit: it makes that name or function actually available to <code>html/template</code>. go-clue can explain the tunnel, but your application still has to connect both ends.</p>
 
 <h2>Template inclusion</h2>
 <pre><code>&#123;&#123;/* parent.gohtml */&#125;&#125;
@@ -86,8 +86,8 @@ _, _ = tmpl.ParseFiles("templates/main.gohtml")`}}</code></pre>
 */&#125;&#125;
 &lt;tr&gt;&lt;td&gt;&#123;&#123; .Name &#125;&#125;&lt;/td&gt;&lt;/tr&gt;</code></pre>
 
-<p>When a child template declares <code>@dot</code>, go-doc can validate parent calls such as <code>{{`{{ template "user_row.gohtml" . }}`}}</code>. Passing <code>Page.Users</code> directly to a row template warns because the child expects one <code>User</code>, not <code>[]User</code>.</p>
-<p>If the parent calls a child with no data, go-doc warns as well. That catches accidental <code>{{`{{ template "user_row.gohtml" }}`}}</code> calls before runtime.</p>
+<p>When a child template declares <code>@dot</code>, go-clue can validate parent calls such as <code>{{`{{ template "user_row.gohtml" . }}`}}</code>. Passing <code>Page.Users</code> directly to a row template warns because the child expects one <code>User</code>, not <code>[]User</code>.</p>
+<p>If the parent calls a child with no data, go-clue warns as well. That catches accidental <code>{{`{{ template "user_row.gohtml" }}`}}</code> calls before runtime.</p>
 
 <h2>Single-line annotations</h2>
 <p>If a template or define only needs one declaration, the compact form is valid and often easier to scan.</p>
@@ -111,7 +111,7 @@ _, _ = tmpl.ParseFiles("templates/main.gohtml")`}}</code></pre>
     &lt;tr&gt;&lt;td&gt;&#123;&#123; .Name &#125;&#125;&lt;/td&gt;&lt;/tr&gt;
 &#123;&#123; end &#125;&#125;</code></pre>
 
-<p>Contracts can live on named <code>define</code> blocks too. Put the annotation inside the block so it clearly belongs to that section. A leading annotation directly before <code>define</code> still works as a fallback, but go-doc warns and offers to move it inside. A <code>block</code> call is checked like a <code>template</code> call, so the parent value must match the child dot contract.</p>
+<p>Contracts can live on named <code>define</code> blocks too. Put the annotation inside the block so it clearly belongs to that section. A leading annotation directly before <code>define</code> still works as a fallback, but go-clue warns and offers to move it inside. A <code>block</code> call is checked like a <code>template</code> call, so the parent value must match the child dot contract.</p>
 <p>When duplicate define names exist, the current document wins first, then the current file, then the wider template set. That keeps live edits predictable while the index catches up.</p>
 
 <h2>Scoped function checks</h2>

@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/donseba/go-doc/examples/exp-gen/gen"
-	"github.com/donseba/go-doc/renderer"
+	"github.com/donseba/go-clue/examples/exp-gen/gen"
+	"github.com/donseba/go-clue/renderer"
 )
 
 func TestGeneratedNamespacesParseAtRuntime(t *testing.T) {

@@ -1,11 +1,11 @@
 # Package Evaluation
 
-This document is a neutral assessment of `go-doc` as it exists today. It is
+This document is a neutral assessment of `go-clue` as it exists today. It is
 not a roadmap, pitch, or migration guide.
 
 ## Summary
 
-`go-doc` is developer tooling for ordinary Go templates. It adds typed editor
+`go-clue` is developer tooling for ordinary Go templates. It adds typed editor
 support to `.gohtml`, `.tmpl`, and `.html` files through lightweight template
 contracts such as `@model`, `@dot`, and `@func`.
 
@@ -46,7 +46,7 @@ The Go standard library's [`html/template`](https://pkg.go.dev/html/template)
 is the baseline. It provides HTML-safe template execution and the same core
 interface as `text/template`.
 
-`go-doc` does not replace it. Instead, it makes `html/template` easier to edit
+`go-clue` does not replace it. Instead, it makes `html/template` easier to edit
 by giving the editor type information that the template engine itself does not
 carry.
 
@@ -72,7 +72,7 @@ with Go components.
 `templ` is a stronger choice when a project wants to adopt a component syntax
 and generated Go code as the primary view layer.
 
-`go-doc` is a stronger fit when a project already has many Go templates, wants
+`go-clue` is a stronger fit when a project already has many Go templates, wants
 to keep them, or prefers the standard `html/template` runtime.
 
 Competes on:
@@ -85,7 +85,7 @@ Differs because:
 
 - `templ` changes the template language and adds generation to the main view
   path.
-- `go-doc` keeps normal Go templates and adds tooling around them.
+- `go-clue` keeps normal Go templates and adds tooling around them.
 
 ### Gomponents
 
@@ -95,7 +95,7 @@ functions and types. It is a pure-Go component approach.
 Gomponents is better when a team wants all view code in Go and prefers Go
 syntax over template syntax.
 
-`go-doc` is better when designers, backend developers, or existing systems
+`go-clue` is better when designers, backend developers, or existing systems
 benefit from keeping HTML-looking templates.
 
 Competes on:
@@ -107,19 +107,19 @@ Competes on:
 Differs because:
 
 - Gomponents moves markup into Go.
-- `go-doc` keeps markup in templates.
+- `go-clue` keeps markup in templates.
 
 ### Framework-specific template helpers
 
 Many projects solve this locally with framework conventions, template loading
 wrappers, custom FuncMaps, live reloaders, or app-specific partial systems.
 
-`go-doc` can coexist with those, especially when they still use
+`go-clue` can coexist with those, especially when they still use
 `html/template`. Its value is editor intelligence, not a rendering framework.
 
 ### IDE-native template support
 
-Editors already provide some HTML and Go-template awareness. `go-doc` competes
+Editors already provide some HTML and Go-template awareness. `go-clue` competes
 with the default editor experience by adding project-specific type knowledge.
 
 The package helps most when native editor support cannot infer the type behind
@@ -142,7 +142,7 @@ Typical pain points:
 
 ### Server-rendered Go applications
 
-`go-doc` fits server-rendered applications where templates are still a normal
+`go-clue` fits server-rendered applications where templates are still a normal
 part of the architecture. This includes small web apps, internal tools,
 documentation sites, admin panels, and htmx-oriented applications.
 
@@ -154,14 +154,14 @@ does not need to convert its rendering stack.
 ### Developers who like standard library primitives
 
 If a team prefers `net/http`, `html/template`, and explicit Go code over a
-larger framework, `go-doc` aligns well with that philosophy.
+larger framework, `go-clue` aligns well with that philosophy.
 
 ## Why It Helps
 
 `html/template` is intentionally dynamic. At runtime, this is flexible. In the
 editor, it often means the template has no useful type information.
 
-`go-doc` helps by making the implicit contract explicit:
+`go-clue` helps by making the implicit contract explicit:
 
 ```gotemplate
 {{/*
@@ -172,7 +172,7 @@ editor, it often means the template has no useful type information.
 ```
 
 This is a two-way contract. The annotation tells the editor what `Page` is; the
-application must still register `Page` at runtime, either with go-doc's optional
+application must still register `Page` at runtime, either with go-clue's optional
 renderer or equivalent template glue. For direct `tmpl.Execute(w, page)`, the
 matching contract is `@dot`, and the template uses `{{ .Title }}`.
 
@@ -208,7 +208,7 @@ which is a common blind spot in Go templates.
 ### Function return awareness
 
 `@func` and configured global functions allow helper calls to be typed. If a
-function returns a struct, go-doc can continue completion through `with` blocks
+function returns a struct, go-clue can continue completion through `with` blocks
 or parenthesized calls.
 
 ### Include awareness
@@ -242,7 +242,7 @@ native `html/template` syntax.
 
 ### It is not compile-time enforcement by default
 
-Unless CI runs `go-doc` checks or generated artifacts are validated, many
+Unless CI runs `go-clue` checks or generated artifacts are validated, many
 benefits are editor-time benefits. That is still useful, but it is not the same
 as generated Go code failing to compile.
 
@@ -260,7 +260,7 @@ Getting all of this correct is possible, but it is not trivial.
 
 ### Runtime and editor contracts can drift
 
-If an app registers a FuncMap at runtime but does not describe it to go-doc,
+If an app registers a FuncMap at runtime but does not describe it to go-clue,
 the editor may warn incorrectly. If the editor config describes a function that
 runtime does not register, templates may still fail at runtime.
 
@@ -275,7 +275,7 @@ modes are proven.
 
 ### It does not solve HTML structure validation
 
-`go-doc` is about Go template data contracts. It is not primarily an HTML
+`go-clue` is about Go template data contracts. It is not primarily an HTML
 validator, accessibility checker, CSS analyzer, or browser testing tool.
 
 ## Who Should Avoid It
@@ -283,7 +283,7 @@ validator, accessibility checker, CSS analyzer, or browser testing tool.
 ### Projects already committed to `templ`
 
 If a team is happy with `templ` and wants compile-time generated components,
-`go-doc` may be unnecessary.
+`go-clue` may be unnecessary.
 
 ### Projects that want all markup in Go
 
@@ -296,12 +296,12 @@ than value.
 
 ### Teams unwilling to install editor tooling
 
-Most value comes from the LSP and editor integrations. Without them, go-doc is
+Most value comes from the LSP and editor integrations. Without them, go-clue is
 less compelling unless used in CI or as a renderer helper.
 
 ### Projects that require hard compile-time guarantees
 
-`go-doc` improves feedback but does not inherently make every template error a
+`go-clue` improves feedback but does not inherently make every template error a
 Go compiler error. Teams that require that guarantee may prefer code-generation
 view systems.
 
@@ -335,7 +335,7 @@ That is sharper than:
 - a component system
 - a replacement for `html/template`
 
-The identity should stay narrow. The more go-doc behaves like "normal Go
+The identity should stay narrow. The more go-clue behaves like "normal Go
 templates, typed enough to enjoy," the easier it is to explain and trust.
 
 ## Recommended Priorities Before v1
@@ -344,14 +344,14 @@ templates, typed enough to enjoy," the easier it is to explain and trust.
    reliable.
 2. Preserve one shared LSP brain across editors.
 3. Make diagnostics boringly predictable and easy to clear after edits.
-4. Keep `.go-doc/config.json` optional and minimal.
+4. Keep `.go-clue/config.json` optional and minimal.
 5. Keep `@gen` clearly experimental until its API stabilizes.
 6. Document runtime/editor drift clearly, especially global functions.
 7. Add CI-friendly validation commands if not already present.
 
 ## Objective Conclusion
 
-`go-doc` solves a real problem for a specific audience: Go developers who like
+`go-clue` solves a real problem for a specific audience: Go developers who like
 the standard template runtime but dislike the weak editor experience around it.
 
 It should not try to beat `templ` at compile-time components or gomponents at

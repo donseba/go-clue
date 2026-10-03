@@ -22,4 +22,4 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "go-doc-goland-plugin"
+rootProject.name = "go-clue-goland-plugin"

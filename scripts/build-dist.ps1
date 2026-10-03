@@ -27,7 +27,7 @@ try {
 } finally {
     Pop-Location
 }
-Copy-Item -Force (Join-Path $root "ide\goland\build\distributions\go-doc-goland-plugin-$golandVersion.zip") $dist
+Copy-Item -Force (Join-Path $root "ide\goland\build\distributions\go-clue-goland-plugin-$golandVersion.zip") $dist
 
 & (Join-Path $PSScriptRoot "build-vscode.ps1")
 & (Join-Path $PSScriptRoot "build-sublime.ps1")

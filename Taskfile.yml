@@ -67,10 +67,10 @@ tasks:
       - echo "CircleCI installs JDK and Gradle explicitly; see .circleci/config.yml."
 
   install:cli:
-    desc: Install the go-doc CLIs into GOPATH/bin
+    desc: Install the go-clue CLIs into GOPATH/bin
     cmds:
       - go install .
-      - go install ./cmd/godoc-exp-gen
+      - go install ./cmd/go-clue-exp-gen
 
   test:
     desc: Run Go tests
@@ -78,10 +78,10 @@ tasks:
       - go test ./...
 
   build:cli:
-    desc: Build the local go-doc CLI
+    desc: Build the local go-clue CLI
     cmds:
       - task: ensure:dist
-      - go build -o "{{.DIST_DIR}}/go-doc" .
+      - go build -o "{{.DIST_DIR}}/go-clue" .
 
   build:goland:
     desc: Build the GoLand plugin ZIP
@@ -125,7 +125,7 @@ tasks:
     cmds:
       - npm ci
       - node --check extension.js
-      - npx --yes @vscode/vsce package --out "../../{{.DIST_DIR}}/go-doc-vscode-$(node -p \"require('./package.json').version\").vsix"
+      - npx --yes @vscode/vsce package --out "../../{{.DIST_DIR}}/go-clue-vscode-$(node -p \"require('./package.json').version\").vsix"
 
   build:sublime:
     desc: Build the Sublime Text package

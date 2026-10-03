@@ -26,9 +26,9 @@ internal/textfuncs/textfuncs.go
 gen/gen.go</code></pre>
 
 <h2>Generation</h2>
-<pre><code>go install github.com/donseba/go-doc/cmd/godoc-exp-gen@latest
+<pre><code>go install github.com/donseba/go-clue/cmd/go-clue-exp-gen@main
 
-godoc-exp-gen \
+go-clue-exp-gen \
   -package gen \
   -out gen/gen.go</code></pre>
 
@@ -38,7 +38,7 @@ godoc-exp-gen \
 
 tmpl := template.New("page.gohtml").Funcs(gen.FuncMap())
 _, err := tmpl.ParseFiles("templates/page.gohtml")`}}</code></pre>
-<p>This only registers helper namespaces such as <code>time</code>, <code>money</code>, and <code>text</code>. A named model such as <code>Page</code> is a separate contract: <code>@model Page ...</code> tells go-doc what the template expects, and runtime code must register a real <code>Page</code> accessor before parsing. If the template is executed with dot data, use <code>@dot</code> and <code>{{`{{ .Title }}`}}</code> instead.</p>
+<p>This only registers helper namespaces such as <code>time</code>, <code>money</code>, and <code>text</code>. A named model such as <code>Page</code> is a separate contract: <code>@model Page ...</code> tells go-clue what the template expects, and runtime code must register a real <code>Page</code> accessor before parsing. If the template is executed with dot data, use <code>@dot</code> and <code>{{`{{ .Title }}`}}</code> instead.</p>
 
 <h2>Editor behavior</h2>
 <p>The language server treats each <code>@gen</code> namespace as a synthetic typed value. That means completion, hover, diagnostics, and go-to-definition work for calls such as <code>time.Format</code>, <code>money.EUR</code>, and <code>text.Initials</code>.</p>

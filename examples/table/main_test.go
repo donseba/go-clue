@@ -45,7 +45,7 @@ func TestSingleFileTemplateRendersLocalDefines(t *testing.T) {
 
 	html := body.String()
 	for _, expected := range []string{
-		"go-doc single-file template example",
+		"go-clue single-file template example",
 		`id="single-user-1"`,
 		"<td>Ada Lovelace</td>",
 		`<span class="pill">active</span>`,

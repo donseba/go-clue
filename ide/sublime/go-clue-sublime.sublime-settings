@@ -1,0 +1,9 @@
+{
+  // Requires `go-clue` on PATH:
+  //   go install github.com/donseba/go-clue@main
+  "enabled": true,
+  "command": ["go-clue", "lsp"],
+  "selector": "text.html.go-template",
+  "schemes": ["file"],
+  "semantic_highlighting": true
+}

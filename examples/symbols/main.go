@@ -7,7 +7,7 @@ import (
 	"log"
 	"net/http"
 
-	"github.com/donseba/go-doc/renderer"
+	"github.com/donseba/go-clue/renderer"
 )
 
 type app struct {
@@ -54,7 +54,7 @@ func (app *app) page(w http.ResponseWriter, r *http.Request) {
 
 	page := Page{
 		Title:       "Typed runtime symbols",
-		Description: "go-doc can understand framework-provided names without hard-coding the framework.",
+		Description: "go-clue can understand framework-provided names without hard-coding the framework.",
 	}
 	symbols := runtimeSymbols{
 		LikesPoll: Interaction{
@@ -83,7 +83,7 @@ func (app *app) page(w http.ResponseWriter, r *http.Request) {
 
 func (app *app) render(w io.Writer, page Page, symbols runtimeSymbols) error {
 	tmpl := template.New("page.gohtml").Funcs(symbolFuncMap(symbols))
-	if err := app.renderer.Register(tmpl, page); err != nil {
+	if err := app.renderer.Register(tmpl, page, symbols.PrimaryButton); err != nil {
 		return err
 	}
 	if _, err := tmpl.ParseFiles(app.templateFiles...); err != nil {

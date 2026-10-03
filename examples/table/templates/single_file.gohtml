@@ -1,4 +1,4 @@
-{{/* @model Page github.com/donseba/go-doc/examples/table.UserTablePage */}}
+{{/* @model Page github.com/donseba/go-clue/examples/table.UserTablePage */}}
 <!doctype html>
 <html lang="en">
 <head>
@@ -16,7 +16,7 @@
 </head>
 <body>
     <header>
-        <p>go-doc single-file template example</p>
+        <p>go-clue single-file template example</p>
         <h1>{{ Page.Title }}</h1>
         <p>The main template owns <code>@model Page</code>. Local sections below the page declare their own <code>@dot</code> contracts.</p>
     </header>
@@ -41,7 +41,7 @@
 </html>
 
 {{ define "single_file_user_row" }}
-{{/* @dot github.com/donseba/go-doc/examples/table.User */}}
+{{/* @dot github.com/donseba/go-clue/examples/table.User */}}
 <tr id="single-user-{{ .ID }}">
     <td>{{ .ID }}</td>
     <td>{{ .Name }}</td>
@@ -52,6 +52,6 @@
 {{ end }}
 
 {{ define "single_file_status" }}
-{{/* @dot github.com/donseba/go-doc/examples/table.User */}}
+{{/* @dot github.com/donseba/go-clue/examples/table.User */}}
 <span class="pill">{{ .Status }}</span>
 {{ end }}

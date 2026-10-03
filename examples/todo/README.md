@@ -32,7 +32,7 @@ The app exposes:
 - `POST /todos/{id}/toggle` toggles the todo in memory and redirects back
 
 No generated index is required. The language server can scan this module in
-memory from `go.mod`. Generate `examples/todo/.go-doc/index.json` only when you
+memory from `go.mod`. Generate `examples/todo/.go-clue/index.json` only when you
 want to inspect the discovered contracts on disk.
 
 Run the example:

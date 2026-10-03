@@ -2,4 +2,4 @@
 
 package main
 
-import _ "github.com/donseba/go-doc/cmd/godoc-exp-gen"
+import _ "github.com/donseba/go-clue/cmd/go-clue-exp-gen"

@@ -1,4 +1,4 @@
-// Package renderer provides small html/template helpers for go-doc contracts.
+// Package renderer provides small html/template helpers for go-clue contracts.
 package renderer
 
 import (
@@ -12,7 +12,7 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/donseba/go-doc/internal/godoccli"
+	"github.com/donseba/go-clue/internal/gocluecli"
 )
 
 // Mode controls when template contracts are read.
@@ -40,7 +40,7 @@ type Config struct {
 	Funcs template.FuncMap
 }
 
-// Renderer registers go-doc typed-root accessors for one template set.
+// Renderer registers go-clue typed-root accessors for one template set.
 //
 // Controllers can call Register the same way in development and production; the
 // mode only changes when template contracts are scanned.
@@ -421,7 +421,7 @@ func validRootName(name string) bool {
 	if name == "" {
 		return false
 	}
-	if godoccli.ReservedTemplateNames[name] {
+	if gocluecli.ReservedTemplateNames[name] {
 		return false
 	}
 	for i, r := range name {

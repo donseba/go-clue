@@ -1,4 +1,4 @@
-module github.com/donseba/go-doc
+module github.com/donseba/go-clue
 
 go 1.26
 

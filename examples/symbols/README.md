@@ -1,6 +1,6 @@
 # Symbols Example
 
-This example shows open typed-root annotations in go-doc.
+This example shows open typed-root annotations in go-clue.
 
 Any non-special annotation with a name and type becomes a typed root. `@model`
 is the recommended convention for page data, but `@component`, `@interaction`,
@@ -16,7 +16,7 @@ one that still requires an explicit type:
   "symbolAnnotations": [
     {
       "name": "interaction",
-      "type": "github.com/donseba/go-doc/examples/symbols.Interaction"
+      "type": "github.com/donseba/go-clue/examples/symbols.Interaction"
     },
     {
       "name": "component"
@@ -30,9 +30,9 @@ That lets the template use framework or application vocabulary:
 
 ```gotemplate
 {{/*
-@model Page github.com/donseba/go-doc/examples/symbols.Page
+@model Page github.com/donseba/go-clue/examples/symbols.Page
 @interaction LikesPoll
-@component PrimaryButton github.com/donseba/go-doc/examples/symbols.Button
+@component PrimaryButton github.com/donseba/go-clue/examples/symbols.Button
 */}}
 
 {{ Page.Title }}
@@ -48,7 +48,7 @@ declares a type. Set `symbolStrictMode` to true when you want unknown annotation
 names to be reported as typos. After parsing, all accepted custom annotations
 are treated as typed roots.
 
-This is still a two-way contract. The annotation only teaches go-doc and the
+This is still a two-way contract. The annotation only teaches go-clue and the
 editor what `LikesPoll` and `PrimaryButton` mean. Runtime code still has to
 register those names before parsing:
 
@@ -76,6 +76,6 @@ Then open:
 http://localhost:8094
 ```
 
-Open `templates/page.gohtml` in an editor with go-doc enabled. You should get
+Open `templates/page.gohtml` in an editor with go-clue enabled. You should get
 completion, hover, semantic highlighting, and go-to-definition for
 `LikesPoll.Endpoint` and `PrimaryButton.Label`.

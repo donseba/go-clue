@@ -1,5 +1,5 @@
 {{/*
-@model Page github.com/donseba/go-doc/examples/showcase.ShowcasePage
+@model Page github.com/donseba/go-clue/examples/showcase.ShowcasePage
 */}}
 {{ define "content" }}
 <p class="eyebrow">Generated helpers</p>
@@ -31,10 +31,10 @@
     <article class="panel">
         <h2>Template contract</h2>
 <pre><code>&#123;&#123;/*
-&#64;model Page github.com/donseba/go-doc/examples/exp-gen.Page
-&#64;gen time github.com/donseba/go-doc/examples/exp-gen/internal/timefuncs
-&#64;gen money github.com/donseba/go-doc/examples/exp-gen/internal/moneyfuncs
-&#64;gen text github.com/donseba/go-doc/examples/exp-gen/internal/textfuncs
+&#64;model Page github.com/donseba/go-clue/examples/exp-gen.Page
+&#64;gen time github.com/donseba/go-clue/examples/exp-gen/internal/timefuncs
+&#64;gen money github.com/donseba/go-clue/examples/exp-gen/internal/moneyfuncs
+&#64;gen text github.com/donseba/go-clue/examples/exp-gen/internal/textfuncs
 */&#125;&#125;
 
 &#123;&#123; time.Format Page.GeneratedAt "15:04:05" &#125;&#125;
@@ -43,10 +43,10 @@
     </article>
     <article class="panel">
         <h2>Generated wrapper</h2>
-<pre><code>godoc-exp-gen \
+<pre><code>go-clue-exp-gen \
   -package gen \
   -out gen/gen.go</code></pre>
-<pre><code>{{`import "github.com/donseba/go-doc/examples/exp-gen/gen"
+<pre><code>{{`import "github.com/donseba/go-clue/examples/exp-gen/gen"
 
 tmpl := template.New("page.gohtml").Funcs(gen.FuncMap())`}}</code></pre>
     </article>

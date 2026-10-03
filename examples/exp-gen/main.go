@@ -6,8 +6,8 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/donseba/go-doc/examples/exp-gen/gen"
-	"github.com/donseba/go-doc/renderer"
+	"github.com/donseba/go-clue/examples/exp-gen/gen"
+	"github.com/donseba/go-clue/renderer"
 )
 
 type Page struct {

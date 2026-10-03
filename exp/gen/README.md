@@ -1,4 +1,4 @@
-# go-doc exp/gen
+# go-clue exp/gen
 
 `exp/gen` is an experiment for generated template helper namespaces.
 
@@ -22,7 +22,7 @@ Add an experimental generation declaration to a template:
 Generate a small wrapper package from those template declarations:
 
 ```sh
-godoc-exp-gen \
+go-clue-exp-gen \
   -package gen \
   -out gen/gen.go
 ```
@@ -49,7 +49,7 @@ value with exported methods.
 
 `@gen` only creates helper namespace functions. It does not create model
 accessors. If the same template also declares `@model Page ...`, that is a
-separate two-way contract: the annotation tells go-doc what `Page` should be,
+separate two-way contract: the annotation tells go-clue what `Page` should be,
 and runtime code must register a real `Page` template function before parsing.
 For direct `tmpl.Execute(w, page)` templates, use `@dot` and normal dot access
 instead.
@@ -58,12 +58,12 @@ For direct one-off generation without scanning templates, pass `-pkg` and
 `-namespace`:
 
 ```sh
-godoc-exp-gen -pkg time -namespace time -package gen -out gen/gen.go
+go-clue-exp-gen -pkg time -namespace time -package gen -out gen/gen.go
 ```
 
 ## Why Not In The Main Path?
 
-The main go-doc path should stay boring and reliable: `@model`, `@dot`, `@func`,
+The main go-clue path should stay boring and reliable: `@model`, `@dot`, `@func`,
 includes, diagnostics, and editor support. Generated helper namespaces are more
 opinionated because they affect application runtime wiring, so they live here
 until the ergonomics prove themselves.

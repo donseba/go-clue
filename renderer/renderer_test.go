@@ -62,7 +62,7 @@ func TestRegisterRejectsNilTemplate(t *testing.T) {
 func TestRegisterFromFilesUsesRootDeclarationNames(t *testing.T) {
 	root := t.TempDir()
 	file := writeTemplate(t, root, "page.gohtml", `{{/*
-@model Page github.com/donseba/go-doc/renderer.testPage
+@model Page github.com/donseba/go-clue/renderer.testPage
 */}}
 {{ Page.Title }}`)
 
@@ -86,7 +86,7 @@ func TestRegisterFromFilesUsesRootDeclarationNames(t *testing.T) {
 func TestRendererDevelopmentModeScansOnRegister(t *testing.T) {
 	root := t.TempDir()
 	file := writeTemplate(t, root, "page.gohtml", `{{/*
-@model Page github.com/donseba/go-doc/renderer.testPage
+@model Page github.com/donseba/go-clue/renderer.testPage
 */}}
 {{ Page.Title }}`)
 
@@ -95,7 +95,7 @@ func TestRendererDevelopmentModeScansOnRegister(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(file, []byte(`{{/*
-@model Renamed github.com/donseba/go-doc/renderer.testPage
+@model Renamed github.com/donseba/go-clue/renderer.testPage
 */}}
 {{ Renamed.Title }}`), 0o644); err != nil {
 		t.Fatal(err)
@@ -121,7 +121,7 @@ func TestRendererDevelopmentModeScansOnRegister(t *testing.T) {
 func TestRendererRegisterInstallsDefaultFuncs(t *testing.T) {
 	root := t.TempDir()
 	file := writeTemplate(t, root, "page.gohtml", `{{/*
-@model Page github.com/donseba/go-doc/renderer.testPage
+@model Page github.com/donseba/go-clue/renderer.testPage
 */}}
 {{ upper Page.Title }}`)
 
@@ -156,7 +156,7 @@ func TestRendererRegisterInstallsDefaultFuncs(t *testing.T) {
 func TestRendererDefaultFuncsAreCloned(t *testing.T) {
 	root := t.TempDir()
 	file := writeTemplate(t, root, "page.gohtml", `{{/*
-@model Page github.com/donseba/go-doc/renderer.testPage
+@model Page github.com/donseba/go-clue/renderer.testPage
 */}}
 {{ suffix Page.Title }}`)
 	funcs := template.FuncMap{
@@ -196,7 +196,7 @@ func TestUseFuncsRejectsInvalidFuncMap(t *testing.T) {
 func TestRendererProductionModeUsesStartupContracts(t *testing.T) {
 	root := t.TempDir()
 	file := writeTemplate(t, root, "page.gohtml", `{{/*
-@model Page github.com/donseba/go-doc/renderer.testPage
+@model Page github.com/donseba/go-clue/renderer.testPage
 */}}
 {{ Page.Title }}`)
 
@@ -205,7 +205,7 @@ func TestRendererProductionModeUsesStartupContracts(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(file, []byte(`{{/*
-@model Renamed github.com/donseba/go-doc/renderer.testPage
+@model Renamed github.com/donseba/go-clue/renderer.testPage
 */}}
 {{ Renamed.Title }}`), 0o644); err != nil {
 		t.Fatal(err)
@@ -223,7 +223,7 @@ func TestRendererProductionModeUsesStartupContracts(t *testing.T) {
 func TestRendererDefaultsToProductionMode(t *testing.T) {
 	root := t.TempDir()
 	file := writeTemplate(t, root, "page.gohtml", `{{/*
-@model Page github.com/donseba/go-doc/renderer.testPage
+@model Page github.com/donseba/go-clue/renderer.testPage
 */}}
 {{ Page.Title }}`)
 
@@ -246,7 +246,7 @@ func TestRendererRejectsUnknownMode(t *testing.T) {
 func TestScanContractsCanBeReusedWithRegisterFromContracts(t *testing.T) {
 	root := t.TempDir()
 	file := writeTemplate(t, root, "page.gohtml", `{{/*
-@model Page github.com/donseba/go-doc/renderer.testPage
+@model Page github.com/donseba/go-clue/renderer.testPage
 */}}
 {{ Page.Title }}`)
 
@@ -275,7 +275,7 @@ func TestScanContractsCanBeReusedWithRegisterFromContracts(t *testing.T) {
 func TestLoadContractsCanBeReusedAtStartup(t *testing.T) {
 	root := t.TempDir()
 	file := writeTemplate(t, root, "page.gohtml", `{{/*
-@model Page github.com/donseba/go-doc/renderer.testPage
+@model Page github.com/donseba/go-clue/renderer.testPage
 */}}
 {{ Page.Title }}`)
 
@@ -283,7 +283,7 @@ func TestLoadContractsCanBeReusedAtStartup(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := contracts.Roots()["Page"]; got != "github.com/donseba/go-doc/renderer.testPage" {
+	if got := contracts.Roots()["Page"]; got != "github.com/donseba/go-clue/renderer.testPage" {
 		t.Fatalf("contract Page = %q", got)
 	}
 
@@ -307,7 +307,7 @@ func TestLoadContractsCanBeReusedAtStartup(t *testing.T) {
 func TestLoadedContractsDoNotChangeWhenTemplateDeclarationChanges(t *testing.T) {
 	root := t.TempDir()
 	file := writeTemplate(t, root, "page.gohtml", `{{/*
-@model Page github.com/donseba/go-doc/renderer.testPage
+@model Page github.com/donseba/go-clue/renderer.testPage
 */}}
 {{ Page.Title }}`)
 
@@ -316,7 +316,7 @@ func TestLoadedContractsDoNotChangeWhenTemplateDeclarationChanges(t *testing.T) 
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(file, []byte(`{{/*
-@model Renamed github.com/donseba/go-doc/renderer.testPage
+@model Renamed github.com/donseba/go-clue/renderer.testPage
 */}}
 {{ Renamed.Title }}`), 0o644); err != nil {
 		t.Fatal(err)
@@ -334,12 +334,12 @@ func TestLoadedContractsDoNotChangeWhenTemplateDeclarationChanges(t *testing.T) 
 func TestRegisterFromFilesSeesTemplateDeclarationChanges(t *testing.T) {
 	root := t.TempDir()
 	file := writeTemplate(t, root, "page.gohtml", `{{/*
-@model Page github.com/donseba/go-doc/renderer.testPage
+@model Page github.com/donseba/go-clue/renderer.testPage
 */}}
 {{ Page.Title }}`)
 
 	if err := os.WriteFile(file, []byte(`{{/*
-@model Renamed github.com/donseba/go-doc/renderer.testPage
+@model Renamed github.com/donseba/go-clue/renderer.testPage
 */}}
 {{ Renamed.Title }}`), 0o644); err != nil {
 		t.Fatal(err)
@@ -365,7 +365,7 @@ func TestRegisterFromFilesSeesTemplateDeclarationChanges(t *testing.T) {
 func TestRegisterFromFilesUsesRenamedRootDeclaration(t *testing.T) {
 	root := t.TempDir()
 	file := writeTemplate(t, root, "page.gohtml", `{{/*
-@model XXX github.com/donseba/go-doc/renderer.testPage
+@model XXX github.com/donseba/go-clue/renderer.testPage
 */}}
 {{ XXX.Title }}`)
 
@@ -389,7 +389,7 @@ func TestRegisterFromFilesUsesRenamedRootDeclaration(t *testing.T) {
 func TestRegisterFromFilesMatchesPointerValues(t *testing.T) {
 	root := t.TempDir()
 	file := writeTemplate(t, root, "page.gohtml", `{{/*
-@model Page github.com/donseba/go-doc/renderer.testPage
+@model Page github.com/donseba/go-clue/renderer.testPage
 */}}
 {{ Page.Title }}`)
 
@@ -412,7 +412,7 @@ func TestRegisterFromFilesMatchesPointerValues(t *testing.T) {
 
 func TestRegisterFromFilesScansOneLineTemplateComment(t *testing.T) {
 	root := t.TempDir()
-	file := writeTemplate(t, root, "page.gohtml", `{{/* @model Page github.com/donseba/go-doc/renderer.testPage */}}
+	file := writeTemplate(t, root, "page.gohtml", `{{/* @model Page github.com/donseba/go-clue/renderer.testPage */}}
 {{ Page.Title }}`)
 
 	tmpl := template.New("page.gohtml")
@@ -435,7 +435,7 @@ func TestRegisterFromFilesScansOneLineTemplateComment(t *testing.T) {
 func TestRegisterFromFilesRejectsMissingRootValue(t *testing.T) {
 	root := t.TempDir()
 	file := writeTemplate(t, root, "page.gohtml", `{{/*
-@model Page github.com/donseba/go-doc/renderer.testPage
+@model Page github.com/donseba/go-clue/renderer.testPage
 */}}`)
 
 	err := RegisterFromFiles(template.New("page.gohtml"), nil, file)
@@ -447,7 +447,7 @@ func TestRegisterFromFilesRejectsMissingRootValue(t *testing.T) {
 func TestRegisterFromFilesRejectsAmbiguousRootValue(t *testing.T) {
 	root := t.TempDir()
 	file := writeTemplate(t, root, "page.gohtml", `{{/*
-@model Page github.com/donseba/go-doc/renderer.testPage
+@model Page github.com/donseba/go-clue/renderer.testPage
 */}}`)
 
 	err := RegisterFromFiles(template.New("page.gohtml"), []any{testPage{}, testPage{}}, file)

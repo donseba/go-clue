@@ -1,6 +1,6 @@
-# go-doc for GoLand
+# go-clue for GoLand
 
-GoLand integration for typed Go templates powered by `go-doc lsp`.
+GoLand integration for typed Go templates powered by `go-clue lsp`.
 
 The plugin starts the shared language server for `.gohtml`, `.tmpl`, and `.html`
 files, then adds a few GoLand-native conveniences for installation, status,
@@ -8,19 +8,19 @@ hover, and navigation.
 
 ## Requirements
 
-Install `go-doc` on your PATH:
+Install `go-clue` on your PATH:
 
 ```bash
-go install github.com/donseba/go-doc@latest
+go install github.com/donseba/go-clue@main
 ```
 
-If `go-doc` is missing, the plugin can offer to install it with the same command.
+If `go-clue` is missing, the plugin can offer to install it with the same command.
 
 On Windows, the plugin starts the long-lived LSP from a temporary copy of
-`go-doc.exe`. That means `go install github.com/donseba/go-doc@latest` can
+`go-clue.exe`. That means `go install github.com/donseba/go-clue@main` can
 replace the installed binary while GoLand is open. Restart the LSP/editor to use
 the newly installed version.
-`Tools > Show go-doc Status` shows both the installed CLI version and the active
+`Tools > Show go-clue Status` shows both the installed CLI version and the active
 LSP copy version.
 
 ## Quick Start
@@ -42,17 +42,17 @@ Add a template contract:
 
 `@model Page ...` is the editor-side entrance of the contract. Runtime code
 must still register a real `Page` template accessor before parsing, usually
-with go-doc's optional renderer. For plain `tmpl.Execute(w, page)` templates,
+with go-clue's optional renderer. For plain `tmpl.Execute(w, page)` templates,
 use `@dot` and `{{ .Title }}` instead.
 
-No `.go-doc` folder is required. The language server finds `go.mod` and builds
+No `.go-clue` folder is required. The language server finds `go.mod` and builds
 an in-memory index for completion, diagnostics, hover, navigation, and semantic
 highlighting.
 
-Writing `.go-doc/index.json` is optional. Use it only when you want a generated
+Writing `.go-clue/index.json` is optional. Use it only when you want a generated
 artifact for CI, debugging, or other tools.
 
-Disable go-doc for one project with `.go-doc/config.json`:
+Disable go-clue for one project with `.go-clue/config.json`:
 
 ```json
 {
@@ -77,15 +77,15 @@ Disable go-doc for one project with `.go-doc/config.json`:
 The plugin adds:
 
 ```text
-Tools > Rebuild go-doc Index
-Tools > Show go-doc Index Status
-Tools > go-doc Auto Index
+Tools > Rebuild go-clue Index
+Tools > Show go-clue Index Status
+Tools > go-clue Auto Index
 ```
 
 Auto-indexing watches `.go`, `.gohtml`, `.tmpl`, and `.html` files inside the
 project and debounces rebuilds. It is disabled by default because the language
 server indexes in memory. Enable it with the action above or with
-`.go-doc/config.json`:
+`.go-clue/config.json`:
 
 ```json
 {

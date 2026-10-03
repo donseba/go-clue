@@ -1,8 +1,16 @@
 <p align="center">
-    <img src="./assets/go-doc-logo.png" alt="go-doc" width="420">
+    <img src="./assets/go-clue-logo.png" alt="Go-Clue" width="357">
 </p>
 
-`go-doc` brings typed editor tooling to Go templates.
+`go-clue` brings typed editor tooling to Go templates.
+
+Previously published as `go-doc`. The module and CLI are now
+`github.com/donseba/go-clue` and `go-clue`. Move project configuration to
+`.go-clue/config.json` and use `//go-clue:sig`, `//go-clue:funcmap`, and
+`//go-clue:provider` in new code. Existing `//go-doc:` annotations remain
+supported, and `.go-doc/config.json` is read when the new configuration is absent.
+Regenerate optional indexes under `.go-clue/index.json` and reinstall the editor
+integration for the new name.
 
 It reads lightweight typed-root annotations, `@dot`, `@func`, `@gen`, and project-defined
 annotations in `.gohtml`, `.tmpl`, and `.html` templates, scans exported Go
@@ -26,7 +34,7 @@ members, understand `range` dot context, show hover information, and navigate
 back to Go source.
 
 This is a two-way contract, not magic. The annotation is the template-side
-entrance: it tells go-doc and the editor that `Page` should be an
+entrance: it tells go-clue and the editor that `Page` should be an
 `github.com/example/app.Page`. Your application still provides the runtime
 exit: it must register a `Page` accessor before parsing, for example through
 the optional `renderer`, or through equivalent application glue.
@@ -40,8 +48,8 @@ contract is `@dot`, not `@model`.
 Go templates are intentionally simple at runtime, but that usually means the
 editor has no idea what `{{ .Title }}` or `{{ Page.Items }}` refers to.
 
-`go-doc` keeps runtime behavior unchanged. Your application still owns template
-parsing, execution, routing, rendering, and data. `go-doc` only adds a typed
+`go-clue` keeps runtime behavior unchanged. Your application still owns template
+parsing, execution, routing, rendering, and data. `go-clue` only adds a typed
 contract that editors and tools can understand.
 
 ## Features
@@ -60,39 +68,43 @@ contract that editors and tools can understand.
 - Semantic highlighting for typed root types, typed root names,
   built-in functions, custom functions, fields, and methods.
 - A shared LSP core used by GoLand, VS Code, Sublime Text, Vim, and Neovim.
-- Optional `.go-doc/index.json` generation for CI, debugging, and tool
+- Optional `.go-clue/index.json` generation for CI, debugging, and tool
   interoperability.
 
 ## Install
 
+Use `@main` during the rename transition. Existing release tags declare the old
+`github.com/donseba/go-doc` module path; `@latest` will become usable after the
+first release published with the new module path.
+
 Install the CLI:
 
 ```bash
-go install github.com/donseba/go-doc@latest
+go install github.com/donseba/go-clue@main
 ```
 
 Install the experimental helper generator when using `@gen`:
 
 ```bash
-go install github.com/donseba/go-doc/cmd/godoc-exp-gen@latest
+go install github.com/donseba/go-clue/cmd/go-clue-exp-gen@main
 ```
 
 Then install the editor package you use from the release assets.
 
 On Windows, the GoLand and VS Code integrations run the long-lived language
-server from a temporary copy of `go-doc.exe`. That keeps `go install
-github.com/donseba/go-doc@latest` able to replace the installed binary while the
+server from a temporary copy of `go-clue.exe`. That keeps `go install
+github.com/donseba/go-clue@main` able to replace the installed binary while the
 editor is open. Restart the LSP/editor to pick up the newly installed version.
 The editor status commands show both the installed CLI version and the active
 LSP copy version.
 
 | Editor | Package |
 | --- | --- |
-| GoLand | `go-doc-goland-plugin-*.zip` |
-| VS Code | `go-doc-vscode-*.vsix` |
-| Sublime Text | `go-doc-sublime-*.sublime-package` |
-| Vim | `go-doc-vim-*.zip` |
-| Neovim | `go-doc-neovim-*.zip` |
+| GoLand | `go-clue-goland-plugin-*.zip` |
+| VS Code | `go-clue-vscode-*.vsix` |
+| Sublime Text | `go-clue-sublime-*.sublime-package` |
+| Vim | `go-clue-vim-*.zip` |
+| Neovim | `go-clue-neovim-*.zip` |
 
 ## Quick Start
 
@@ -117,7 +129,7 @@ function named `Todo` before parsing. Without that runtime registration,
 
 Capitalized model names are recommended because they read like Go types and
 avoid common template helper names, but lowercase names are not forbidden.
-go-doc reports a diagnostic when a model name collides with a built-in,
+go-clue reports a diagnostic when a model name collides with a built-in,
 configured, or local template function, because the same identifier cannot
 reliably be both a model accessor and a function in `html/template`.
 
@@ -141,7 +153,7 @@ available as `.`:
 ```
 
 When a parent calls that child with `{{ template "user_row.gohtml" . }}`,
-go-doc checks that the passed value matches the child `@dot` contract. The same
+go-clue checks that the passed value matches the child `@dot` contract. The same
 check applies to named `define` sections and `block` calls.
 
 Use `@func` for custom helpers that are local to one template:
@@ -154,10 +166,10 @@ Use `@func` for custom helpers that are local to one template:
 {{ (userByID 2).Name }}
 ```
 
-For helpers available everywhere, prefer `.go-doc/config.json` so you do not
+For helpers available everywhere, prefer `.go-clue/config.json` so you do not
 repeat the same `@func` declarations across templates.
 
-Configured helpers are still a two-way road. The config teaches go-doc what the
+Configured helpers are still a two-way road. The config teaches go-clue what the
 editor should expect, but your Go application must still register the actual
 function in the `html/template.FuncMap`.
 
@@ -173,14 +185,14 @@ For simple one-signature helpers, `functions` is enough:
 
 ### Global FuncMaps
 
-For projects that already collect helpers in a Go `template.FuncMap`, go-doc can
+For projects that already collect helpers in a Go `template.FuncMap`, go-clue can
 read direct static FuncMap literals instead of making you repeat every helper in
 `functions`.
 
 For small projects, annotate the FuncMap:
 
 ```go
-//go-doc:funcmap
+//go-clue:funcmap
 func TemplateFuncs() template.FuncMap {
     return template.FuncMap{
         "asset": Asset,
@@ -191,7 +203,7 @@ func TemplateFuncs() template.FuncMap {
 Variables work too:
 
 ```go
-//go-doc:funcmap
+//go-clue:funcmap
 var TemplateFuncs = template.FuncMap{
     "asset": Asset,
 }
@@ -207,7 +219,7 @@ For larger projects, prefer explicit config:
 }
 ```
 
-`functionMaps` and `//go-doc:funcmap` are statically analyzed. go-doc does not
+`functionMaps` and `//go-clue:funcmap` are statically analyzed. go-clue does not
 execute Go code or use reflection. For v1, use direct composite literals such as
 `template.FuncMap{...}`, `map[string]any{...}`, or
 `map[string]interface{}{...}`. Dynamic construction is reported as unsupported:
@@ -243,29 +255,29 @@ For helpers with multiple accepted call forms, use `templateFunctions`:
 }
 ```
 
-If `signatures` is omitted, go-doc reads `//go-doc:sig` comments from the
+If `signatures` is omitted, go-clue reads `//go-clue:sig` comments from the
 function at `path`. Configured template function packages are loaded directly,
 so this also works for helper packages that live in dependencies:
 
 ```go
-//go-doc:sig func(endpoint string, params ...any) html/template.HTML
-//go-doc:sig func(interaction github.com/donseba/go-partial.Interaction) html/template.HTML
+//go-clue:sig func(endpoint string, params ...any) html/template.HTML
+//go-clue:sig func(interaction github.com/donseba/go-partial.Interaction) html/template.HTML
 func Async() {}
 ```
 
-Request-scoped helpers that are installed as closures can put `//go-doc:sig`
-directly above the FuncMap assignment. go-doc infers the template function name
+Request-scoped helpers that are installed as closures can put `//go-clue:sig`
+directly above the FuncMap assignment. go-clue infers the template function name
 from the static string key:
 
 ```go
-//go-doc:sig func() *net/url.URL
+//go-clue:sig func() *net/url.URL
 funcs["url"] = func() *url.URL {
     return state.URL
 }
 ```
 
 Any non-special annotation with a name and type becomes a typed root: a named
-value that go-doc can complete, validate, hover, and navigate. `@model` is the
+value that go-clue can complete, validate, hover, and navigate. `@model` is the
 recommended convention for page or fragment data. `@symbol`, `@component`,
 `@interaction`, or your own project vocabulary work the same way when they
 declare a type:
@@ -278,7 +290,7 @@ declare a type:
 {{ LikesPoll.ID }}
 ```
 
-Every typed root is still a two-way contract. The annotation tells go-doc the
+Every typed root is still a two-way contract. The annotation tells go-clue the
 expected type, but your runtime must still register the actual template accessor
 or function that makes `LikesPoll` available. The annotation word is vocabulary,
 not a different engine path.
@@ -292,9 +304,9 @@ Any custom annotation with an explicit type is accepted by default:
 */}}
 ```
 
-Projects can define shorter symbol annotations in `.go-doc/config.json`. This
+Projects can define shorter symbol annotations in `.go-clue/config.json`. This
 lets framework packages expose their own vocabulary without hard-coding it into
-go-doc, and it lets stricter teams decide which annotation names are allowed:
+go-clue, and it lets stricter teams decide which annotation names are allowed:
 
 ```json
 {
@@ -327,15 +339,15 @@ checks, argument checks, pipelines, and return types.
 
 By default, custom annotation names are open. `@jimmy Button
 github.com/example/ui.Button` is valid because it includes an explicit type. Set
-`symbolStrictMode: true` when you want go-doc to warn about unconfigured custom
+`symbolStrictMode: true` when you want go-clue to warn about unconfigured custom
 annotation names. In strict mode, only entries listed in `symbolAnnotations`
 are accepted as custom typed-root annotations.
 
 ## Configuration
 
-No `.go-doc` folder is required. By default, `go-doc` finds the nearest
+No `.go-clue` folder is required. By default, `go-clue` finds the nearest
 `go.mod`, scans that module in memory, skips `vendor`, and does not write
-`.go-doc/index.json`.
+`.go-clue/index.json`.
 
 The default configuration is:
 
@@ -359,7 +371,7 @@ The default configuration is:
 }
 ```
 
-Add `.go-doc/config.json` only when a project needs to change those defaults:
+Add `.go-clue/config.json` only when a project needs to change those defaults:
 
 ```json
 {
@@ -399,28 +411,28 @@ Add `.go-doc/config.json` only when a project needs to change those defaults:
 ```
 
 Entries are module-relative paths. `/` means the module root. Excludes win over
-includes. `enabled: false` disables go-doc for the project while leaving the
+includes. `enabled: false` disables go-clue for the project while leaving the
 editor plugin installed. `functions` describes helpers that are available in every template so
 the language server can complete and validate them without repeating `@func` in
 each file. `functionMaps` describes whole static Go FuncMap declarations whose
 string-keyed entries should be available in every template. `discover.functionMaps`
 defaults to `true` and enables scanning included Go files for
-`//go-doc:funcmap` annotations. `providers` lists dependency or framework
-packages whose go-doc annotations should be indexed without scanning every
+`//go-clue:funcmap` annotations. `providers` lists dependency or framework
+packages whose go-clue annotations should be indexed without scanning every
 dependency. Provider entries use Go package patterns: `github.com/acme/ui`
 loads one package, while `github.com/acme/ui/...` loads that subtree.
 Small projects can also declare providers in included Go files:
 
 ```go
-// go-doc:provider "github.com/donseba/go-partial"
-// go-doc:provider "github.com/donseba/go-partial/exp/..."
+// go-clue:provider "github.com/donseba/go-partial"
+// go-clue:provider "github.com/donseba/go-partial/exp/..."
 ```
 
-`discover.providers` controls `//go-doc:provider` scanning and
-`discover.signatures` controls `//go-doc:sig` scanning. Both default to `true`.
+`discover.providers` controls `//go-clue:provider` scanning and
+`discover.signatures` controls `//go-clue:sig` scanning. Both default to `true`.
 `templateFunctions` is the richer form for
-helpers that need multiple signatures or use `//go-doc:sig` comments as their
-source of truth. `//go-doc:sig` can annotate a named Go function or a closure
+helpers that need multiple signatures or use `//go-clue:sig` comments as their
+source of truth. `//go-clue:sig` can annotate a named Go function or a closure
 assignment such as `funcs["url"] = func(...) { ... }`.
 `symbolAnnotations` describes custom annotation names that produce typed roots.
 Use this for framework concepts such as `@interaction`, `@component`,
@@ -430,45 +442,45 @@ like a named root value but is not a callable function. `symbolStrictMode` defau
 typos even if they include an explicit type.
 
 `writeIndex` controls editor auto-indexing. Keep it `false` unless you want editor
-adapters to maintain `.go-doc/index.json` after file changes. Even when it is
+adapters to maintain `.go-clue/index.json` after file changes. Even when it is
 false, the language server still builds an in-memory index and all editor
 features continue to work.
 
 ## Optional Index File
 
 The generated index is an optional artifact, not the project root marker.
-`go-doc` uses `go.mod` to find the module root.
+`go-clue` uses `go.mod` to find the module root.
 
 Create the file explicitly when you want a concrete artifact for CI, debugging,
 or other tools:
 
 ```bash
-go-doc index -o .go-doc/index.json .
+go-clue index -o .go-clue/index.json .
 ```
 
-`go-doc index` only writes an index when at least one template declares a typed
-contract, or when `.go-doc/config.json` declares global template functions. If
+`go-clue index` only writes an index when at least one template declares a typed
+contract, or when `.go-clue/config.json` declares global template functions. If
 no typed template surface exists, the command exits successfully without
-creating `.go-doc/index.json`.
+creating `.go-clue/index.json`.
 
 ## Commands
 
 ```bash
-go-doc types [-query Todo] [root]
-go-doc templates [root]
-go-doc index [-o .go-doc/index.json] [root]
-go-doc lsp [root]
+go-clue types [-query Todo] [root]
+go-clue templates [root]
+go-clue index [-o .go-clue/index.json] [root]
+go-clue lsp [root]
 ```
 
 ## Language Server
 
-`go-doc lsp` starts a Language Server Protocol server over stdio. It is the
+`go-clue lsp` starts a Language Server Protocol server over stdio. It is the
 shared implementation used by all editor packages.
 
 The server builds an in-memory index from the module root by default. It reads
-`.go-doc/index.json` only when `.go-doc/config.json` opts into `"writeIndex": true`.
+`.go-clue/index.json` only when `.go-clue/config.json` opts into `"writeIndex": true`.
 Completion, diagnostics, hover, go-to-definition, semantic tokens, and include
-checks still work without a `.go-doc` folder.
+checks still work without a `.go-clue` folder.
 
 ## Experimental Generation
 
@@ -499,7 +511,7 @@ gen/gen.go
 ```
 
 ```bash
-godoc-exp-gen \
+go-clue-exp-gen \
   -package gen \
   -out gen/gen.go
 ```
@@ -518,7 +530,7 @@ for the full explanation.
 
 ## Runtime Integration
 
-`go-doc` does not require a framework. It does not execute your templates or
+`go-clue` does not require a framework. It does not execute your templates or
 change how your application renders HTML.
 
 For projects that want annotated typed-root names available during ordinary
@@ -563,7 +575,7 @@ If `views.Register` is omitted, `Page.Title` is not valid plain
 `html/template` syntax. Use `@dot` and `.Title` instead when executing directly
 with `tmpl.Execute(w, page)`.
 
-`Config.Funcs` is the runtime counterpart to `.go-doc/config.json` functions:
+`Config.Funcs` is the runtime counterpart to `.go-clue/config.json` functions:
 the config teaches editors about globally available helpers, while the renderer
 registers the real Go functions with `html/template`.
 
@@ -617,6 +629,6 @@ Build outputs are collected locally in `dist`.
 Release archives contain editor packages only. The CLI is distributed through:
 
 ```bash
-go install github.com/donseba/go-doc@latest
-go install github.com/donseba/go-doc/cmd/godoc-exp-gen@latest
+go install github.com/donseba/go-clue@main
+go install github.com/donseba/go-clue/cmd/go-clue-exp-gen@main
 ```

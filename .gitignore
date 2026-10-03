@@ -33,14 +33,16 @@ ide/vscode/*.vsix
 
 ide/sublime/*.sublime-package
 
+.go-clue/
 .go-doc/
 
-!examples/standalone/.go-doc/
-!examples/standalone/.go-doc/index.json
-!examples/todo/.go-doc/
-!examples/todo/.go-doc/config.json
-!examples/todo/.go-doc/index.json
-!examples/showcase/.go-doc/
-!examples/showcase/.go-doc/index.json
-!examples/symbols/.go-doc/
-!examples/symbols/.go-doc/config.json
+!examples/standalone/.go-clue/
+!examples/standalone/.go-clue/index.json
+!examples/todo/.go-clue/
+!examples/todo/.go-clue/config.json
+!examples/todo/.go-clue/index.json
+!examples/showcase/.go-clue/
+!examples/showcase/.go-clue/index.json
+!examples/symbols/.go-clue/
+!examples/symbols/.go-clue/config.json
+!examples/symbols/.go-clue/index.json

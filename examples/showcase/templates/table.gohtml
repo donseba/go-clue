@@ -1,8 +1,8 @@
 {{/*
-@model Page github.com/donseba/go-doc/examples/showcase.ShowcasePage
+@model Page github.com/donseba/go-clue/examples/showcase.ShowcasePage
 
-@func firstUser github.com/donseba/go-doc/examples/showcase.FirstUser
-@func userByID github.com/donseba/go-doc/examples/showcase.UserByID
+@func firstUser github.com/donseba/go-clue/examples/showcase.FirstUser
+@func userByID github.com/donseba/go-clue/examples/showcase.UserByID
 */}}
 {{ define "content" }}
 <p class="eyebrow">Nested templates</p>
@@ -51,7 +51,7 @@
     <article class="panel">
         <h2>Parent template</h2>
 <pre><code>&#123;&#123;/*
-&#64;model Page github.com/donseba/go-doc/examples/showcase.ShowcasePage
+&#64;model Page github.com/donseba/go-clue/examples/showcase.ShowcasePage
 */&#125;&#125;
 
 &lt;tbody&gt;
@@ -63,7 +63,7 @@
     <article class="panel">
         <h2>Row template</h2>
 <pre><code>&#123;&#123;/*
-&#64;dot github.com/donseba/go-doc/examples/showcase.User
+&#64;dot github.com/donseba/go-clue/examples/showcase.User
 */&#125;&#125;
 
 &lt;tr&gt;
@@ -77,7 +77,7 @@
 
 <section class="panel">
     <h2>Include awareness</h2>
-    <p>Because <code>user_row.gohtml</code> declares <code>@dot User</code>, go-doc can warn when the parent passes the wrong value into that child template, or no value at all. The same check applies to named <code>block</code> calls.</p>
+    <p>Because <code>user_row.gohtml</code> declares <code>@dot User</code>, go-clue can warn when the parent passes the wrong value into that child template, or no value at all. The same check applies to named <code>block</code> calls.</p>
 <pre><code>&#123;&#123;/* valid: dot is User inside the range */&#125;&#125;
 &#123;&#123; range Page.Users &#125;&#125;
     &#123;&#123; template "user_row.gohtml" . &#125;&#125;
@@ -93,7 +93,7 @@
 
 &#123;&#123;/* invalid: child has @dot, but no value is passed */&#125;&#125;
 &#123;&#123; template "user_row.gohtml" &#125;&#125;</code></pre>
-    <p>If the same define name appears in multiple places, go-doc uses the current document text first, then the current file, then the wider index. Live edits win while the generated index catches up.</p>
+    <p>If the same define name appears in multiple places, go-clue uses the current document text first, then the current file, then the wider index. Live edits win while the generated index catches up.</p>
 </section>
 
 <section class="panel">
@@ -128,7 +128,7 @@ type User struct {
 }
 
 func UserByID(id int) User {
-    // Return a typed User. go-doc follows that return type in templates.
+    // Return a typed User. go-clue follows that return type in templates.
 }`}}</code></pre>
 </section>
 {{ end }}

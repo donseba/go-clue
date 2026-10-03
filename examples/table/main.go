@@ -7,7 +7,7 @@ import (
 	"log"
 	"net/http"
 
-	"github.com/donseba/go-doc/renderer"
+	"github.com/donseba/go-clue/renderer"
 )
 
 type app struct {

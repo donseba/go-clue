@@ -1,13 +1,13 @@
 {{/*
-@model Page github.com/donseba/go-doc/examples/symbols.Page
-@struct PageTest github.com/donseba/go-doc/examples/symbols.Page
+@model Page github.com/donseba/go-clue/examples/symbols.Page
+@struct PageTest github.com/donseba/go-clue/examples/symbols.Page
 
 @interaction LikesPoll
-@component PrimaryButton github.com/donseba/go-doc/examples/symbols.Button
-@model Button github.com/donseba/go-doc/examples/symbols.Button
+@component PrimaryButton github.com/donseba/go-clue/examples/symbols.Button
+@model Button github.com/donseba/go-clue/examples/symbols.Button
 
 
-@jimmy Button2 github.com/donseba/go-doc/examples/symbols.Button
+@jimmy Button2 github.com/donseba/go-clue/examples/symbols.Button
 */}}
 <!doctype html>
 <html lang="en">
@@ -33,7 +33,7 @@
     <p>{{ Page.Description }}</p>
     <section>
         <h2>Configured symbol alias</h2>
-        <p><code>@interaction LikesPoll</code> is configured as <code>Interaction</code> in <code>.go-doc/config.json</code>.</p>
+        <p><code>@interaction LikesPoll</code> is configured as <code>Interaction</code> in <code>.go-clue/config.json</code>.</p>
         <dl>
             <dt>ID</dt>
             <dd>{{ LikesPoll.ID }}</dd>
@@ -48,7 +48,7 @@
 
     <section>
         <h2>Explicit symbol type</h2>
-        <p><code>@component PrimaryButton github.com/donseba/go-doc/examples/symbols.Button</code> declares the component type directly.</p>
+        <p><code>@component PrimaryButton github.com/donseba/go-clue/examples/symbols.Button</code> declares the component type directly.</p>
         <a class="button {{ PrimaryButton.Variant }}{{ if not PrimaryButton.Enabled }} disabled{{ end }}" href="{{ PrimaryButton.Href }}">
             {{ PrimaryButton.Label }}
         </a>

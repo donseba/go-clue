@@ -1,20 +1,20 @@
-# go-doc for Vim
+# go-clue for Vim
 
-Vim adapter for typed Go templates powered by `go-doc lsp`.
+Vim adapter for typed Go templates powered by `go-clue lsp`.
 
 Classic Vim does not include a built-in LSP client, so this package registers
-`go-doc lsp` with the popular `vim-lsp` plugin.
+`go-clue lsp` with the popular `vim-lsp` plugin.
 
 ## Requirements
 
 - Vim 8.2 or newer
 - `prabirshrestha/vim-lsp`
-- `go-doc` on `PATH`
+- `go-clue` on `PATH`
 
 Install the CLI:
 
 ```bash
-go install github.com/donseba/go-doc@latest
+go install github.com/donseba/go-clue@main
 ```
 
 ## Install
@@ -23,19 +23,19 @@ With `vim-plug`:
 
 ```vim
 Plug 'prabirshrestha/vim-lsp'
-Plug 'donseba/go-doc', { 'rtp': 'ide/vim' }
+Plug 'donseba/go-clue', { 'rtp': 'ide/vim' }
 ```
 
-From a release ZIP, copy the contents of `go-doc-vim` into:
+From a release ZIP, copy the contents of `go-clue-vim` into:
 
 ```text
-~/.vim/pack/go-doc/start/go-doc
+~/.vim/pack/go-clue/start/go-clue
 ```
 
 On Windows:
 
 ```text
-%USERPROFILE%\vimfiles\pack\go-doc\start\go-doc
+%USERPROFILE%\vimfiles\pack\go-clue\start\go-clue
 ```
 
 ## Quick Start
@@ -43,19 +43,19 @@ On Windows:
 The plugin auto-registers the server on `User lsp_setup`:
 
 ```text
-go-doc lsp <nearest go.mod directory>
+go-clue lsp <nearest go.mod directory>
 ```
 
 Disable automatic registration:
 
 ```vim
-let g:go_doc_auto_start = 0
+let g:go_clue_auto_start = 0
 ```
 
-Then copy the server registration from `plugin/go_doc_lsp.vim` into your own
+Then copy the server registration from `plugin/go_clue_lsp.vim` into your own
 Vim config and customize it.
 
-Disable go-doc for one project with `.go-doc/config.json`:
+Disable go-clue for one project with `.go-clue/config.json`:
 
 ```json
 {
@@ -76,12 +76,12 @@ Template contracts use `@model`:
 
 `@model Page ...` is the editor-side entrance of the contract. Runtime code
 must still register a real `Page` template accessor before parsing, usually
-with go-doc's optional renderer. For plain `tmpl.Execute(w, page)` templates,
+with go-clue's optional renderer. For plain `tmpl.Execute(w, page)` templates,
 use `@dot` and `{{ .Title }}` instead.
 
 ## LSP Features
 
 The Vim package only registers the server. Completion, diagnostics, hover,
-go-to-definition, and document symbols come from `go-doc lsp`. The server
+go-to-definition, and document symbols come from `go-clue lsp`. The server
 understands `@model`, `@dot`, `@func`, range/with dot context, typed function
 returns, template includes, named defines, and block calls.

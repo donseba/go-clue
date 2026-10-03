@@ -1,6 +1,6 @@
 {
-  "name": "go-doc-vscode",
-  "displayName": "go-doc",
+  "name": "go-clue-vscode",
+  "displayName": "go-clue",
   "description": "Typed Go template contracts with completion, diagnostics, hover, navigation, semantic highlighting, static FuncMap discovery, and provider package support.",
   "version": "0.13.5",
   "publisher": "donseba",
@@ -13,7 +13,7 @@
   "icon": "icon.png",
   "repository": {
     "type": "git",
-    "url": "https://github.com/donseba/go-doc"
+    "url": "https://github.com/donseba/go-clue"
   },
   "engines": {
     "vscode": "^1.90.0"
@@ -39,11 +39,11 @@
     "onStartupFinished",
     "workspaceContains:**/*.gohtml",
     "workspaceContains:**/*.tmpl",
-    "onCommand:goDoc.rebuildIndex",
-    "onCommand:goDoc.showIndexStatus",
-    "onCommand:goDoc.toggleEnabled",
-    "onCommand:goDoc.toggleAutoIndex",
-    "onCommand:goDoc.restartLsp"
+    "onCommand:go-clue.rebuildIndex",
+    "onCommand:go-clue.showIndexStatus",
+    "onCommand:go-clue.toggleEnabled",
+    "onCommand:go-clue.toggleAutoIndex",
+    "onCommand:go-clue.restartLsp"
   ],
   "main": "./extension.js",
   "contributes": {
@@ -63,24 +63,24 @@
     ],
     "commands": [
       {
-        "command": "goDoc.rebuildIndex",
-        "title": "go-doc: Rebuild Index"
+        "command": "go-clue.rebuildIndex",
+        "title": "go-clue: Rebuild Index"
       },
       {
-        "command": "goDoc.showIndexStatus",
-        "title": "go-doc: Show Index Status"
+        "command": "go-clue.showIndexStatus",
+        "title": "go-clue: Show Index Status"
       },
       {
-        "command": "goDoc.toggleEnabled",
-        "title": "go-doc: Toggle Enabled"
+        "command": "go-clue.toggleEnabled",
+        "title": "go-clue: Toggle Enabled"
       },
       {
-        "command": "goDoc.toggleAutoIndex",
-        "title": "go-doc: Toggle Auto Index"
+        "command": "go-clue.toggleAutoIndex",
+        "title": "go-clue: Toggle Auto Index"
       },
       {
-        "command": "goDoc.restartLsp",
-        "title": "go-doc: Restart LSP"
+        "command": "go-clue.restartLsp",
+        "title": "go-clue: Restart LSP"
       }
     ],
     "configurationDefaults": {
@@ -108,19 +108,19 @@
       }
     },
     "configuration": {
-      "title": "go-doc",
+      "title": "go-clue",
       "properties": {
-        "goDoc.enabled": {
+        "go-clue.enabled": {
           "type": "boolean",
           "default": true,
-          "description": "Enable go-doc for this workspace. A project can also opt out with .go-doc/config.json: { \"enabled\": false }."
+          "description": "Enable go-clue for this workspace. A project can also opt out with .go-clue/config.json: { \"enabled\": false }."
         },
-        "goDoc.autoIndex": {
+        "go-clue.autoIndex": {
           "type": "boolean",
           "default": false,
-          "description": "Automatically rebuild .go-doc/index.json after Go or template files change. Disabled by default because the language server can index in memory. A project can also opt in with .go-doc/config.json: { \"writeIndex\": true }."
+          "description": "Automatically rebuild .go-clue/index.json after Go or template files change. Disabled by default because the language server can index in memory. A project can also opt in with .go-clue/config.json: { \"writeIndex\": true }."
         },
-        "goDoc.debounceMilliseconds": {
+        "go-clue.debounceMilliseconds": {
           "type": "number",
           "default": 1200,
           "minimum": 250,

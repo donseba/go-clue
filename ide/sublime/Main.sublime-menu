@@ -10,14 +10,14 @@
         "id": "package-settings",
         "children": [
           {
-            "caption": "go-doc",
+            "caption": "go-clue",
             "children": [
               {
                 "caption": "Settings",
                 "command": "edit_settings",
                 "args": {
-                  "base_file": "${packages}/go-doc-sublime/go-doc-sublime.sublime-settings",
-                  "default": "// Settings in here override those in \"go-doc-sublime/go-doc-sublime.sublime-settings\"\n\n{\n\t$0\n}\n"
+                  "base_file": "${packages}/go-clue-sublime/go-clue-sublime.sublime-settings",
+                  "default": "// Settings in here override those in \"go-clue-sublime/go-clue-sublime.sublime-settings\"\n\n{\n\t$0\n}\n"
                 }
               }
             ]

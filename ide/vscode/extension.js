@@ -4,13 +4,13 @@ const path = require("path");
 const cp = require("child_process");
 const os = require("os");
 
-const output = vscode.window.createOutputChannel("go-doc");
+const output = vscode.window.createOutputChannel("go-clue");
 
 let client = null;
 let rebuildTimer = null;
 let installPromptOpen = false;
 let extensionContext = null;
-let goDocCommand = null;
+let goClueCommand = null;
 let languageClientModule = null;
 let activeLspCommand = null;
 let activeLspVersion = "-";
@@ -18,7 +18,7 @@ let activeLspVersion = "-";
 async function activate(context) {
   extensionContext = context;
   context.subscriptions.push(output);
-  output.appendLine(`go-doc extension activated at ${new Date().toISOString()}`);
+  output.appendLine(`go-clue extension activated at ${new Date().toISOString()}`);
 
   const watcher = vscode.workspace.createFileSystemWatcher("**/*.{go,gohtml,tmpl,html}");
   context.subscriptions.push(
@@ -27,11 +27,11 @@ async function activate(context) {
     watcher.onDidCreate((uri) => scheduleRebuild(uri.fsPath)),
     watcher.onDidDelete((uri) => scheduleRebuild(uri.fsPath)),
     vscode.workspace.onDidSaveTextDocument((document) => scheduleRebuild(document.uri.fsPath)),
-    vscode.commands.registerCommand("goDoc.rebuildIndex", rebuildCurrentWorkspace),
-    vscode.commands.registerCommand("goDoc.showIndexStatus", showIndexStatus),
-    vscode.commands.registerCommand("goDoc.toggleEnabled", toggleEnabled),
-    vscode.commands.registerCommand("goDoc.toggleAutoIndex", toggleAutoIndex),
-    vscode.commands.registerCommand("goDoc.restartLsp", restartLsp),
+    vscode.commands.registerCommand("go-clue.rebuildIndex", rebuildCurrentWorkspace),
+    vscode.commands.registerCommand("go-clue.showIndexStatus", showIndexStatus),
+    vscode.commands.registerCommand("go-clue.toggleEnabled", toggleEnabled),
+    vscode.commands.registerCommand("go-clue.toggleAutoIndex", toggleAutoIndex),
+    vscode.commands.registerCommand("go-clue.restartLsp", restartLsp),
   );
 
   await startClient(context);
@@ -45,17 +45,17 @@ async function deactivate() {
 async function startClient(context) {
   const root = workspaceRoot();
   if (!root) {
-    output.appendLine("No workspace folder found; go-doc LSP not started");
+    output.appendLine("No workspace folder found; go-clue LSP not started");
     return;
   }
-  if (!goDocEnabled(root)) {
-    output.appendLine("go-doc disabled for this workspace");
+  if (!goClueEnabled(root)) {
+    output.appendLine("go-clue disabled for this workspace");
     return;
   }
 
-  const command = await ensureGoDoc(root, false);
+  const command = await ensureGoClue(root, false);
   if (!command) {
-    output.appendLine("go-doc CLI is not available; LSP not started");
+    output.appendLine("go-clue CLI is not available; LSP not started");
     return;
   }
   const lspCommand = prepareLspCommand(command);
@@ -63,14 +63,14 @@ async function startClient(context) {
   await stopClient();
   activeLspCommand = lspCommand;
   activeLspVersion = await commandVersion(lspCommand, root);
-  output.appendLine(`Starting go-doc LSP: ${lspCommand} lsp ${root} (${activeLspVersion})`);
+  output.appendLine(`Starting go-clue LSP: ${lspCommand} lsp ${root} (${activeLspVersion})`);
 
   const lsp = loadLanguageClient();
   if (!lsp) return;
 
   client = new lsp.LanguageClient(
-    "go-doc",
-    "go-doc",
+    "go-clue",
+    "go-clue",
     {
       command: lspCommand,
       args: ["lsp", root],
@@ -90,16 +90,16 @@ async function startClient(context) {
   );
 
   context.subscriptions.push(client.onDidChangeState((event) => {
-    output.appendLine(`go-doc LSP state: ${stateName(event.oldState)} -> ${stateName(event.newState)}`);
+    output.appendLine(`go-clue LSP state: ${stateName(event.oldState)} -> ${stateName(event.newState)}`);
   }));
   context.subscriptions.push(client);
   try {
     await client.start();
-    output.appendLine("go-doc LSP started");
+    output.appendLine("go-clue LSP started");
     await vscode.commands.executeCommand("editor.action.restartSemanticTokensProvider").then(undefined, () => undefined);
   } catch (err) {
-    output.appendLine(`go-doc LSP failed to start: ${err.message}`);
-    vscode.window.showWarningMessage(`go-doc LSP failed to start: ${err.message}`);
+    output.appendLine(`go-clue LSP failed to start: ${err.message}`);
+    vscode.window.showWarningMessage(`go-clue LSP failed to start: ${err.message}`);
   }
 }
 
@@ -112,7 +112,7 @@ async function stopClient() {
   try {
     await current.stop();
   } catch (err) {
-    output.appendLine(`go-doc LSP stop failed: ${err.message}`);
+    output.appendLine(`go-clue LSP stop failed: ${err.message}`);
   }
 }
 
@@ -123,7 +123,7 @@ function loadLanguageClient() {
     output.appendLine("vscode-languageclient loaded");
     return languageClientModule;
   } catch (err) {
-    const message = `go-doc extension could not load vscode-languageclient: ${err.message}`;
+    const message = `go-clue extension could not load vscode-languageclient: ${err.message}`;
     output.appendLine(message);
     vscode.window.showErrorMessage(message);
     return null;
@@ -142,30 +142,30 @@ function scheduleRebuild(filePath) {
   if (!root) return;
   if (!autoIndexEnabled(root)) return;
   clearTimeout(rebuildTimer);
-  const delay = vscode.workspace.getConfiguration("goDoc").get("debounceMilliseconds", 1200);
+  const delay = vscode.workspace.getConfiguration("go-clue").get("debounceMilliseconds", 1200);
   rebuildTimer = setTimeout(() => rebuildIndex(root, false), delay);
 }
 
 function autoIndexEnabled(root) {
-  if (vscode.workspace.getConfiguration("goDoc").get("autoIndex", false)) return true;
+  if (vscode.workspace.getConfiguration("go-clue").get("autoIndex", false)) return true;
   const config = projectConfig(root);
   return config && config.writeIndex === true;
 }
 
-function goDocEnabled(root) {
-  if (!vscode.workspace.getConfiguration("goDoc").get("enabled", true)) return false;
+function goClueEnabled(root) {
+  if (!vscode.workspace.getConfiguration("go-clue").get("enabled", true)) return false;
   const config = projectConfig(root);
   return !config || config.enabled !== false;
 }
 
 function projectConfig(root) {
   try {
-    const configPath = path.join(root, ".go-doc", "config.json");
+    const configPath = path.join(root, ".go-clue", "config.json");
     if (!fs.existsSync(configPath)) return null;
     const config = JSON.parse(fs.readFileSync(configPath, "utf8"));
     return config || null;
   } catch (err) {
-    output.appendLine(`go-doc config read failed: ${err.message}`);
+    output.appendLine(`go-clue config read failed: ${err.message}`);
     return null;
   }
 }
@@ -177,10 +177,10 @@ async function rebuildCurrentWorkspace() {
 }
 
 async function rebuildIndex(root, notify) {
-  const command = await ensureGoDoc(root, notify);
+  const command = await ensureGoClue(root, notify);
   if (!command) return;
 
-  const outDir = path.join(root, ".go-doc");
+  const outDir = path.join(root, ".go-clue");
   const outFile = path.join(outDir, "index.json");
   fs.mkdirSync(outDir, { recursive: true });
 
@@ -188,16 +188,16 @@ async function rebuildIndex(root, notify) {
   if (result.err) {
     const message = result.stderr || result.stdout || result.err.message;
     output.appendLine(message);
-    vscode.window.showWarningMessage(`go-doc index failed: ${message.slice(0, 160)}`);
+    vscode.window.showWarningMessage(`go-clue index failed: ${message.slice(0, 160)}`);
     return;
   }
 
   if (!fs.existsSync(outFile)) {
     const message = (result.stderr || result.stdout || "no template contracts found; index not written").trim();
     if (message) output.appendLine(message);
-    if (notify) vscode.window.showInformationMessage("go-doc index not needed: no template contracts found");
+    if (notify) vscode.window.showInformationMessage("go-clue index not needed: no template contracts found");
   } else if (notify) {
-    vscode.window.showInformationMessage("go-doc index rebuilt");
+    vscode.window.showInformationMessage("go-clue index rebuilt");
   }
 
   if (client) {
@@ -207,22 +207,22 @@ async function rebuildIndex(root, notify) {
   await startClient(extensionContext || { subscriptions: [] });
 }
 
-async function ensureGoDoc(root, notify) {
-  if (goDocCommand) return goDocCommand;
+async function ensureGoClue(root, notify) {
+  if (goClueCommand) return goClueCommand;
 
-  const resolved = await resolveGoDoc(root);
+  const resolved = await resolveGoClue(root);
   if (resolved) {
-    goDocCommand = resolved;
-    output.appendLine(`go-doc probe succeeded: ${resolved}`);
+    goClueCommand = resolved;
+    output.appendLine(`go-clue probe succeeded: ${resolved}`);
     return resolved;
   }
 
-  output.appendLine("go-doc probe failed: command not found");
+  output.appendLine("go-clue probe failed: command not found");
   const installed = await offerInstall(root, notify);
   if (!installed) return null;
 
-  goDocCommand = await resolveGoDoc(root);
-  return goDocCommand;
+  goClueCommand = await resolveGoClue(root);
+  return goClueCommand;
 }
 
 async function offerInstall(root, notify) {
@@ -230,34 +230,34 @@ async function offerInstall(root, notify) {
   installPromptOpen = true;
   try {
     const answer = await vscode.window.showWarningMessage(
-      "go-doc is not available on PATH. Install it now with `go install github.com/donseba/go-doc@latest`?",
+      "go-clue is not available on PATH. Install it now with `go install github.com/donseba/go-clue@main`?",
       { modal: true },
       "Install",
     );
     if (answer !== "Install") return false;
 
-    output.appendLine("Installing go-doc CLI: go install github.com/donseba/go-doc@latest");
-    const result = await execFile("go", ["install", "github.com/donseba/go-doc@latest"], root);
+    output.appendLine("Installing go-clue CLI: go install github.com/donseba/go-clue@main");
+    const result = await execFile("go", ["install", "github.com/donseba/go-clue@main"], root);
     if (result.stdout) output.appendLine(result.stdout);
     if (result.stderr) output.appendLine(result.stderr);
     if (result.err) {
       const message = result.err.code === "ENOENT"
-        ? "Go is not available on PATH. Install Go or add it to PATH before installing go-doc."
+        ? "Go is not available on PATH. Install Go or add it to PATH before installing go-clue."
         : result.stderr || result.stdout || result.err.message;
-      vscode.window.showErrorMessage(`go-doc install failed: ${message.slice(0, 180)}`);
+      vscode.window.showErrorMessage(`go-clue install failed: ${message.slice(0, 180)}`);
       return false;
     }
-    if (notify) vscode.window.showInformationMessage("go-doc CLI installed");
+    if (notify) vscode.window.showInformationMessage("go-clue CLI installed");
     return true;
   } finally {
     installPromptOpen = false;
   }
 }
 
-async function resolveGoDoc(root) {
-  const envCandidates = await goDocCandidatesFromGoEnv(root);
-  const pathCandidate = await firstGoDocPath(root);
-  const candidates = [...envCandidates, pathCandidate, "go-doc"];
+async function resolveGoClue(root) {
+  const envCandidates = await goClueCandidatesFromGoEnv(root);
+  const pathCandidate = await firstGoCluePath(root);
+  const candidates = [...envCandidates, pathCandidate, "go-clue"];
 
   for (const candidate of unique(candidates.filter(Boolean))) {
     const probe = await execFile(candidate, ["--help"], root);
@@ -267,25 +267,25 @@ async function resolveGoDoc(root) {
   return null;
 }
 
-async function goDocCandidatesFromGoEnv(root) {
+async function goClueCandidatesFromGoEnv(root) {
   const result = await execFile("go", ["env", "GOBIN", "GOPATH"], root);
   if (result.err) {
-    return [defaultGoDocBin()];
+    return [defaultGoClueBin()];
   }
 
   const lines = result.stdout.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
   const gobin = lines[0] || "";
   const gopath = lines[1] || "";
-  const exe = process.platform === "win32" ? "go-doc.exe" : "go-doc";
+  const exe = process.platform === "win32" ? "go-clue.exe" : "go-clue";
   const paths = [];
   if (gobin) paths.push(path.join(gobin, exe));
   if (gopath) paths.push(path.join(gopath.split(path.delimiter)[0], "bin", exe));
-  paths.push(defaultGoDocBin());
+  paths.push(defaultGoClueBin());
   return paths;
 }
 
-function defaultGoDocBin() {
-  const exe = process.platform === "win32" ? "go-doc.exe" : "go-doc";
+function defaultGoClueBin() {
+  const exe = process.platform === "win32" ? "go-clue.exe" : "go-clue";
   return path.join(os.homedir(), "go", "bin", exe);
 }
 
@@ -295,15 +295,15 @@ function prepareLspCommand(command) {
   }
 
   try {
-    const dir = extensionContext?.globalStorageUri?.fsPath || path.join(os.tmpdir(), "go-doc-vscode");
+    const dir = extensionContext?.globalStorageUri?.fsPath || path.join(os.tmpdir(), "go-clue-vscode");
     fs.mkdirSync(dir, { recursive: true });
     cleanupOldLspCopies(dir);
-    const copy = path.join(dir, `go-doc-lsp-${process.pid}-${Date.now()}.exe`);
+    const copy = path.join(dir, `go-clue-lsp-${process.pid}-${Date.now()}.exe`);
     fs.copyFileSync(command, copy);
-    output.appendLine(`Copied go-doc LSP binary to ${copy}`);
+    output.appendLine(`Copied go-clue LSP binary to ${copy}`);
     return copy;
   } catch (err) {
-    output.appendLine(`go-doc LSP binary copy failed, using installed binary: ${err.message}`);
+    output.appendLine(`go-clue LSP binary copy failed, using installed binary: ${err.message}`);
     return command;
   }
 }
@@ -311,12 +311,12 @@ function prepareLspCommand(command) {
 function cleanupOldLspCopies(dir) {
   try {
     for (const entry of fs.readdirSync(dir)) {
-      if (/^go-doc-lsp-\d+-\d+\.exe$/.test(entry)) {
+      if (/^go-clue-lsp-\d+-\d+\.exe$/.test(entry)) {
         fs.rmSync(path.join(dir, entry), { force: true });
       }
     }
   } catch (err) {
-    output.appendLine(`go-doc LSP copy cleanup skipped: ${err.message}`);
+    output.appendLine(`go-clue LSP copy cleanup skipped: ${err.message}`);
   }
 }
 
@@ -343,7 +343,7 @@ function findModuleRoot(filePath) {
 
 function ignoredPath(filePath) {
   const parts = filePath.replaceAll("\\", "/").split("/");
-  return parts.some((part) => [".git", ".idea", ".go-doc", "build", "out", "vendor", "node_modules"].includes(part));
+  return parts.some((part) => [".git", ".idea", ".go-clue", "build", "out", "vendor", "node_modules"].includes(part));
 }
 
 async function showIndexStatus() {
@@ -351,10 +351,10 @@ async function showIndexStatus() {
   const editor = vscode.window.activeTextEditor;
   const filePath = editor && editor.document.uri.fsPath;
   const languageId = editor && editor.document.languageId;
-  const indexFile = root ? path.join(root, ".go-doc", "index.json") : null;
+  const indexFile = root ? path.join(root, ".go-clue", "index.json") : null;
   const exists = indexFile && fs.existsSync(indexFile);
-  const goDocPath = root ? (goDocCommand || await resolveGoDoc(root) || "-") : "-";
-  const installedVersion = root && goDocPath !== "-" ? await commandVersion(goDocPath, root) : "-";
+  const goCluePath = root ? (goClueCommand || await resolveGoClue(root) || "-") : "-";
+  const installedVersion = root && goCluePath !== "-" ? await commandVersion(goCluePath, root) : "-";
   let templates = 0;
   let types = 0;
   let error = "-";
@@ -371,13 +371,13 @@ async function showIndexStatus() {
 
   vscode.window.showInformationMessage(
     [
-      `Optional index: ${exists ? indexFile : "no optional .go-doc/index.json file"}`,
+      `Optional index: ${exists ? indexFile : "no optional .go-clue/index.json file"}`,
       `Index root: ${root || "-"}`,
       `Project: ${vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || "-"}`,
       `File: ${filePath || "-"}`,
       `Language: ${languageId || "-"}`,
       `Client: ${client ? stateName(client.state) : "not created"}`,
-      `go-doc: ${goDocPath}`,
+      `go-clue: ${goCluePath}`,
       `Installed version: ${installedVersion}`,
       `LSP executable: ${activeLspCommand || "-"}`,
       `LSP version: ${activeLspVersion}`,
@@ -390,17 +390,17 @@ async function showIndexStatus() {
 }
 
 async function toggleAutoIndex() {
-  const config = vscode.workspace.getConfiguration("goDoc");
+  const config = vscode.workspace.getConfiguration("go-clue");
   const next = !config.get("autoIndex", false);
   await config.update("autoIndex", next, vscode.ConfigurationTarget.Workspace);
-  vscode.window.showInformationMessage(`go-doc auto index ${next ? "enabled" : "disabled"}`);
+  vscode.window.showInformationMessage(`go-clue auto index ${next ? "enabled" : "disabled"}`);
 }
 
 async function toggleEnabled() {
-  const config = vscode.workspace.getConfiguration("goDoc");
+  const config = vscode.workspace.getConfiguration("go-clue");
   const next = !config.get("enabled", true);
   await config.update("enabled", next, vscode.ConfigurationTarget.Workspace);
-  vscode.window.showInformationMessage(`go-doc ${next ? "enabled" : "disabled"} for this workspace`);
+  vscode.window.showInformationMessage(`go-clue ${next ? "enabled" : "disabled"} for this workspace`);
   if (next) {
     await startClient(extensionContext || { subscriptions: [] });
     return;
@@ -411,7 +411,7 @@ async function toggleEnabled() {
 async function restartLsp() {
   output.show(true);
   await startClient(extensionContext || { subscriptions: [] });
-  vscode.window.showInformationMessage("go-doc LSP restarted");
+  vscode.window.showInformationMessage("go-clue LSP restarted");
 }
 
 function stateName(state) {
@@ -429,14 +429,14 @@ function stateName(state) {
   }
 }
 
-async function findGoDocPath(root) {
+async function findGoCluePath(root) {
   const command = process.platform === "win32" ? "where" : "which";
-  const result = await execFile(command, ["go-doc"], root);
+  const result = await execFile(command, ["go-clue"], root);
   return (result.stdout || result.stderr || result.err?.message || "-").trim();
 }
 
-async function firstGoDocPath(root) {
-  const output = await findGoDocPath(root);
+async function firstGoCluePath(root) {
+  const output = await findGoCluePath(root);
   const first = output.split(/\r?\n/).map((line) => line.trim()).find(Boolean);
   return first && first !== "-" ? first : null;
 }

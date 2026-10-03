@@ -1,4 +1,4 @@
-# go-doc Manifesto
+# go-clue Manifesto
 
 HTML templates should not feel blind.
 
@@ -23,7 +23,7 @@ one of their strengths. The strange part is that we have accepted writing typed
 Go on one side of the boundary and nearly untyped template expressions on the
 other side.
 
-go-doc exists because that boundary should be better.
+go-clue exists because that boundary should be better.
 
 ## The Core Belief
 
@@ -37,7 +37,7 @@ But they deserve a modern editing experience.
 
 That is the whole point.
 
-go-doc does not say:
+go-clue does not say:
 
 > Throw away `html/template`.
 
@@ -70,7 +70,7 @@ Then inside the template:
 
 The contract exists. The editor just cannot see it.
 
-go-doc makes the raw `html/template` contract visible:
+go-clue makes the raw `html/template` contract visible:
 
 ```gotemplate
 {{/* @dot github.com/example/app.Page */}}
@@ -90,12 +90,12 @@ the optional renderer to register the declared model before parsing:
 ```
 
 Both forms are real. `@dot` describes normal `tmpl.Execute(w, page)` style
-templates. `@model` describes named values registered by go-doc's renderer or
+templates. `@model` describes named values registered by go-clue's renderer or
 by equivalent application glue.
 
 This is not magic. This is documentation that tools can read.
 
-That is why the name matters: go-doc is not trying to be a framework. It is
+That is why the name matters: go-clue is not trying to be a framework. It is
 structured documentation for Go templates. Like JSDoc, but for Go template
 data. Like a map, but one the editor can drive with.
 
@@ -199,7 +199,7 @@ diagnostics work. And when a parent calls:
 {{ template "user_row.gohtml" . }}
 ```
 
-go-doc can check whether `.` is actually a `User`.
+go-clue can check whether `.` is actually a `User`.
 
 This is the kind of boring correctness that makes templates feel trustworthy.
 
@@ -221,7 +221,7 @@ These calls have types.
 
 `Format` is a method.
 
-The editor should know that. go-doc makes it know that.
+The editor should know that. go-clue makes it know that.
 
 ```gotemplate
 {{/*
@@ -257,7 +257,7 @@ Are those two things compatible?
 
 Without a contract, the answer is vibes.
 
-With go-doc:
+With go-clue:
 
 ```gotemplate
 {{/* @dot github.com/example/app.User */}}
@@ -272,7 +272,7 @@ bag of files whose relationships only become real at runtime.
 
 ## Normal Go, Still Normal Go
 
-The best part is what go-doc does not do.
+The best part is what go-clue does not do.
 
 It does not replace your router.
 
@@ -292,7 +292,7 @@ Your app still owns FuncMaps.
 
 Your app still decides how templates are parsed and executed.
 
-go-doc simply gives your editor the missing context.
+go-clue simply gives your editor the missing context.
 
 That restraint matters.
 
@@ -302,7 +302,7 @@ Yes, this adds annotations.
 
 Yes, the editor tooling has to be installed.
 
-Yes, the contract can drift if your runtime FuncMap and go-doc config disagree.
+Yes, the contract can drift if your runtime FuncMap and go-clue config disagree.
 
 Yes, supporting multiple editors is work.
 
@@ -322,7 +322,7 @@ up.
 The alternative is telling people to abandon standard templates entirely just to
 get a decent typed editing experience.
 
-go-doc is a bet that we do not have to do that.
+go-clue is a bet that we do not have to do that.
 
 ## Why Not Just Use `templ`?
 
@@ -339,7 +339,7 @@ Not every team wants markup inside Go-shaped component files.
 
 Not every app needs a new rendering model.
 
-For those projects, go-doc is the missing middle:
+For those projects, go-clue is the missing middle:
 
 ```text
 standard templates
@@ -360,7 +360,7 @@ Go.
 But HTML templates remain valuable because they look like HTML, are easy to
 scan, and fit the mental model of server-rendered pages.
 
-go-doc does not argue that templates are better for everyone.
+go-clue does not argue that templates are better for everyone.
 
 It argues that if you choose templates, you should not have to give up type
 awareness.
@@ -406,7 +406,7 @@ The editor understands it.
 
 That loop should be normal.
 
-## What go-doc Wants To Make True
+## What go-clue Wants To Make True
 
 When you type `Page.`, you should get fields.
 
@@ -444,7 +444,7 @@ That is the right separation:
 - the contract stays visible
 - the app stays in control
 
-go-doc lives in that separation.
+go-clue lives in that separation.
 
 ## The Bold Claim
 
@@ -466,11 +466,11 @@ The language server should validate it.
 
 The developer should move faster with fewer surprises.
 
-That is what go-doc is trying to make real.
+That is what go-clue is trying to make real.
 
 ## Final Word
 
-go-doc is not trying to make templates clever.
+go-clue is not trying to make templates clever.
 
 It is trying to make them clear.
 
@@ -492,4 +492,4 @@ That layer should feel boring.
 
 That layer should become expected.
 
-That is go-doc.
+That is go-clue.

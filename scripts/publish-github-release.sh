@@ -4,7 +4,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DIST="${ROOT}/dist"
 TAG="${1:-${CIRCLE_TAG:-}}"
-REPO="${GITHUB_REPOSITORY:-${CIRCLE_PROJECT_USERNAME:-donseba}/${CIRCLE_PROJECT_REPONAME:-go-doc}}"
+REPO="${GITHUB_REPOSITORY:-${CIRCLE_PROJECT_USERNAME:-donseba}/${CIRCLE_PROJECT_REPONAME:-go-clue}}"
 
 if [[ -z "${TAG}" ]]; then
   echo "release tag is required, for example v0.1.0" >&2
@@ -36,7 +36,7 @@ release_json="$(
 
 if [[ -z "${release_json}" ]]; then
   release_json="$(
-    jq -n --arg tag "${TAG}" --arg name "go-doc ${TAG}" \
+    jq -n --arg tag "${TAG}" --arg name "go-clue ${TAG}" \
       '{tag_name: $tag, name: $name, draft: false, prerelease: false}' |
     curl -fsS -X POST \
       -H "${auth_header}" \

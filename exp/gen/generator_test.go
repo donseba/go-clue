@@ -12,7 +12,7 @@ import (
 
 func TestGenerateNamespaceFuncMap(t *testing.T) {
 	source, err := Generate(context.Background(), Options{
-		PackagePath: "github.com/donseba/go-doc/exp/gen/testdata/helpers",
+		PackagePath: "github.com/donseba/go-clue/exp/gen/testdata/helpers",
 		Namespace:   "helpers",
 		PackageName: "generated",
 	})
@@ -22,7 +22,7 @@ func TestGenerateNamespaceFuncMap(t *testing.T) {
 	text := string(source)
 
 	assertContains(t, text, `package generated`)
-	assertContains(t, text, `helpers "github.com/donseba/go-doc/exp/gen/testdata/helpers"`)
+	assertContains(t, text, `helpers "github.com/donseba/go-clue/exp/gen/testdata/helpers"`)
 	assertContains(t, text, `"helpers": func() HelpersNamespace { return HelpersNamespace{} }`)
 	assertContains(t, text, `func (HelpersNamespace) Add(v0 int, v1 int) int`)
 	assertContains(t, text, `return helpers.Add(v0, v1)`)
@@ -41,14 +41,14 @@ func TestGenerateNamespaceFuncMap(t *testing.T) {
 
 func TestGenerateDefaultsNamespace(t *testing.T) {
 	source, err := Generate(context.Background(), Options{
-		PackagePath: "github.com/donseba/go-doc/exp/gen/testdata/helpers",
+		PackagePath: "github.com/donseba/go-clue/exp/gen/testdata/helpers",
 	})
 	if err != nil {
 		t.Fatalf("Generate() error = %v", err)
 	}
 	text := string(source)
 
-	assertContains(t, text, `package godocgen`)
+	assertContains(t, text, `package gocluegen`)
 	assertContains(t, text, `"helpers": func() HelpersNamespace { return HelpersNamespace{} }`)
 }
 

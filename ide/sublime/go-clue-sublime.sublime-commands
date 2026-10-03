@@ -1,0 +1,17 @@
+[
+  {
+    "caption": "Preferences: go-clue Settings",
+    "command": "edit_settings",
+    "args": {
+      "base_file": "${packages}/go-clue-sublime/go-clue-sublime.sublime-settings",
+      "default": "// Settings in here override those in \"go-clue-sublime/go-clue-sublime.sublime-settings\"\n\n{\n\t$0\n}\n"
+    }
+  },
+  {
+    "caption": "go-clue: Open README",
+    "command": "open_file",
+    "args": {
+      "file": "${packages}/go-clue-sublime/README.md"
+    }
+  }
+]
