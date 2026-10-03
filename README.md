@@ -1,5 +1,7 @@
 <p align="center">
-    <img src="./assets/go-clue-logo.png" alt="Go-Clue" width="357">
+    <a href="https://docs.gowebthings.com/go-clue">
+        <img src="./assets/go-clue-logo.png" alt="Go-Clue" width="119" height="70">
+    </a>
 </p>
 
 `go-clue` brings typed editor tooling to Go templates.
