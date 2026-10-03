@@ -64,7 +64,8 @@ class GoClueRuntimeTest {
         val gobin = temporary.newFolder("go env gobin")
         executable(sdkBin, "go", "printf '%s\\n' '${gobin.path}'")
         val cli = executable(gobin, "go-clue", "command -v go")
-        val runtime = GoClueRuntime(mapOf("PATH" to "/usr/bin:/bin", "GOROOT" to sdk.path))
+        val guiPath = temporary.newFolder("GUI launch PATH")
+        val runtime = GoClueRuntime(mapOf("PATH" to guiPath.path, "GOROOT" to sdk.path))
         assertEquals(cli, runtime.findExecutable(temporary.root, "go-clue"))
         val process = ProcessBuilder(cli.path)
             .apply { environment().putAll(runtime.commandEnvironment(temporary.root)) }

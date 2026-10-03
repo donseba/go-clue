@@ -4,7 +4,7 @@ plugins {
 }
 
 group = "com.donseba.goclue"
-version = "0.15.0"
+version = "0.15.1"
 
 kotlin {
     jvmToolchain(21)
@@ -49,5 +49,7 @@ dependencies {
 
 tasks.test {
     useJUnit()
+    testLogging {
+        exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
+    }
 }
-
