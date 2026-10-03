@@ -11,7 +11,7 @@ cd "${ROOT}"
 go test ./...
 
 cd "${ROOT}/ide/goland"
-gradle buildPlugin
+gradle test buildPlugin
 GOLAND_VERSION="$(gradle -q properties | awk -F': ' '/^version:/ {print $2; exit}')"
 cp "build/distributions/go-clue-goland-plugin-${GOLAND_VERSION}.zip" "${DIST}/"
 

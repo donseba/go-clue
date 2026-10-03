@@ -22,14 +22,14 @@ VS Code integration for typed Go templates powered by `go-clue lsp`.
 Install the `go-clue` CLI and make sure it is available on `PATH`:
 
 ```bash
-go install github.com/donseba/go-clue@main
+go install github.com/donseba/go-clue@latest
 ```
 
 If the CLI is missing when the extension starts, VS Code asks before running
 that install command for you.
 
 On Windows, the extension starts the long-lived LSP from a temporary copy of
-`go-clue.exe`. That means `go install github.com/donseba/go-clue@main` can
+`go-clue.exe`. That means `go install github.com/donseba/go-clue@latest` can
 replace the installed binary while VS Code is open. Restart the LSP to use the
 newly installed version.
 `go-clue: Show Index Status` shows both the installed CLI version and the active

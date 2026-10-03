@@ -24,7 +24,7 @@ class RebuildIndexAction : AnAction() {
     }
 
     private fun rebuild(project: Project, selectedPath: String?) {
-        val root = GoClueIndexer.findModuleRoot(selectedPath) ?: goClueReadAction { project.basePath }?.let { File(it) } ?: return
+        val root = GoClueIndexer.moduleRoot(project, selectedPath) ?: return
         val outDir = File(root, ".go-clue")
         val outFile = File(outDir, "index.json")
         outDir.mkdirs()

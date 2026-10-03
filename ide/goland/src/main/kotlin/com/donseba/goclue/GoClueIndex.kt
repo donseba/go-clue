@@ -5,7 +5,6 @@ import com.google.gson.JsonElement
 import com.google.gson.JsonObject
 import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.openapi.project.Project
-import com.intellij.openapi.roots.ProjectRootManager
 import com.intellij.openapi.vfs.LocalFileSystem
 import java.io.File
 import java.nio.charset.StandardCharsets
@@ -88,12 +87,12 @@ class GoClueIndex(
 
         fun load(project: Project, filePath: String?): GoClueIndex {
             val checked = mutableListOf<String>()
-            val root = GoClueIndexer.findModuleRoot(filePath) ?: goClueReadAction { project.basePath }?.let { File(it) }
+            val root = GoClueIndexer.moduleRoot(project, filePath)
             if (root != null && !GoClueIndexer.enabled(project, root)) {
                 return empty(checkedPaths = checked)
             }
             val indexFile = if (root != null && GoClueIndexer.autoIndexEnabled(project, root)) {
-                findIndexFile(project, filePath, checked)
+                findIndexFile(root, checked)
             } else {
                 null
             }
@@ -133,37 +132,10 @@ class GoClueIndex(
             return file.takeIf { it.isFile }
         }
 
-        private fun findIndexFile(project: Project, filePath: String?, checked: MutableList<String>): File? {
-            if (filePath != null) {
-                var dir = File(filePath).let { if (it.isDirectory) it else it.parentFile }
-                while (dir != null) {
-                    if (dir.name == ".go-clue") {
-                        dir = dir.parentFile
-                        continue
-                    }
-                    val goClue = File(dir, ".go-clue/index.json")
-                    checked.add(goClue.path)
-                    if (goClue.isFile) return goClue
-                    dir = dir.parentFile
-                }
-            }
-
-            val candidates = mutableListOf<File>()
-            goClueReadAction {
-                project.basePath?.let {
-                    candidates.add(File(it, ".go-clue/index.json"))
-                }
-                ProjectRootManager.getInstance(project).contentRoots.forEach { root ->
-                    candidates.add(File(root.path, ".go-clue/index.json"))
-                }
-            }
-
-            for (candidate in candidates.distinctBy { it.path }) {
-                checked.add(candidate.path)
-                if (candidate.isFile) return candidate
-            }
-
-            return null
+        private fun findIndexFile(root: File, checked: MutableList<String>): File? {
+            val file = File(root, ".go-clue/index.json")
+            checked.add(file.path)
+            return file.takeIf { it.isFile }
         }
 
         private fun readIndexText(file: File): String {
@@ -212,8 +184,8 @@ class GoClueIndex(
         }
 
         fun refreshVirtualIndex(project: Project) {
-            goClueReadAction { project.basePath }?.let {
-                LocalFileSystem.getInstance().refreshAndFindFileByPath("$it/.go-clue/index.json")
+            GoClueIndexer.moduleRoots(project).forEach {
+                LocalFileSystem.getInstance().refreshAndFindFileByPath("${it.path}/.go-clue/index.json")
             }
         }
 

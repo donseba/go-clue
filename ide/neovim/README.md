@@ -14,7 +14,7 @@ intelligence comes from `go-clue lsp`.
 Install the CLI:
 
 ```bash
-go install github.com/donseba/go-clue@main
+go install github.com/donseba/go-clue@latest
 ```
 
 ## Install

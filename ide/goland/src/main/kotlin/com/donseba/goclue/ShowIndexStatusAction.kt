@@ -14,7 +14,7 @@ class ShowIndexStatusAction : AnAction() {
         val basePath = goClueReadAction { project.basePath }
         val relative = relativePath(basePath, filePath)
         val contract = index.contractForFile(project, filePath)
-        val root = GoClueIndexer.findModuleRoot(filePath ?: basePath) ?: basePath?.let { File(it) }
+        val root = GoClueIndexer.moduleRoot(project, filePath)
         val installedVersion = root?.let { GoClueIndexer.commandVersion("go-clue", it) } ?: "-"
         val shadowIndex = root?.let { GoClueIndexer.shadowIndexFile(it) }
         val content = listOf(
@@ -27,7 +27,10 @@ class ShowIndexStatusAction : AnAction() {
             "Project: ${basePath ?: "-"}",
             "File: ${relative ?: "-"}",
             "Installed version: $installedVersion",
+            "Installed executable: ${root?.let { GoClueIndexer.goClueExecutable(it) } ?: "-"}",
+            "Module root: ${root?.path ?: "no Go module selected"}",
             "LSP executable: ${GoClueIndexer.lastLspExecutable ?: "-"}",
+            "LSP root: ${GoClueIndexer.lastLspRoot ?: "-"}",
             "LSP version: ${GoClueIndexer.lastLspVersion ?: "-"}",
             "Contract: ${if (contract == null) "not matched" else "matched"}",
             "Templates: ${index.templates.size}",

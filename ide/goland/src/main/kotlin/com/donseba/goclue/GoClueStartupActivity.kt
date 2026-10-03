@@ -13,9 +13,10 @@ class GoClueStartupActivity : ProjectActivity {
     override suspend fun execute(project: Project) {
         GoClueIndexWatcher.install(project)
 
-        val basePath = goClueReadAction { project.basePath } ?: return
-        val root = GoClueIndexer.findModuleRoot(basePath) ?: File(basePath)
-        if (!File(root, "go.mod").isFile) return
+        GoClueIndexer.moduleRoots(project).forEach { root -> startIndex(project, root) }
+    }
+
+    private fun startIndex(project: Project, root: File) {
         if (!GoClueIndexer.enabled(project, root)) return
 
         object : Task.Backgroundable(project, "Building go-clue index", false) {

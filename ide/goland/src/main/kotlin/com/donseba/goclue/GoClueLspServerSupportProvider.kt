@@ -7,8 +7,9 @@ import com.intellij.openapi.editor.colors.TextAttributesKey
 import com.intellij.openapi.editor.markup.TextAttributes
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.vfs.VirtualFile
+import com.intellij.openapi.vfs.LocalFileSystem
 import com.intellij.platform.lsp.api.LspServerSupportProvider
-import com.intellij.platform.lsp.api.ProjectWideLspServerDescriptor
+import com.intellij.platform.lsp.api.LspServerDescriptor
 import com.intellij.platform.lsp.api.customization.LspCustomization
 import com.intellij.platform.lsp.api.customization.LspSemanticTokensSupport
 import com.intellij.psi.PsiFile
@@ -24,14 +25,18 @@ internal class GoClueLspServerSupportProvider : LspServerSupportProvider {
         file: VirtualFile,
         serverStarter: LspServerSupportProvider.LspServerStarter,
     ) {
-        val root = GoClueIndexer.findModuleRoot(file.path) ?: goClueReadAction { project.basePath }?.let { java.io.File(it) }
-        if (isSupportedTemplate(file) && (root == null || GoClueIndexer.enabled(project, root))) {
-            serverStarter.ensureServerStarted(GoClueLspServerDescriptor(project))
-        }
+        if (!isSupportedTemplate(file)) return
+        val root = GoClueIndexer.findModuleRoot(file.path) ?: return
+        if (!GoClueIndexer.enabled(project, root)) return
+        val virtualRoot = goClueReadAction { LocalFileSystem.getInstance().findFileByPath(root.path) } ?: return
+        serverStarter.ensureServerStarted(GoClueLspServerDescriptor(project, virtualRoot))
+        GoClueIndexer.requestShadowIndex(project, root)
     }
 }
 
-private class GoClueLspServerDescriptor(project: Project) : ProjectWideLspServerDescriptor(project, "go-clue") {
+private class GoClueLspServerDescriptor(project: Project, moduleRoot: VirtualFile) :
+    LspServerDescriptor(project, "go-clue", moduleRoot) {
+    private val root = File(moduleRoot.path)
     override val lspCustomization = object : LspCustomization() {
         override val semanticTokensCustomizer = object : LspSemanticTokensSupport() {
             override val tokenTypes: List<String> = listOf("variable", "property", "type", "function")
@@ -57,15 +62,17 @@ private class GoClueLspServerDescriptor(project: Project) : ProjectWideLspServer
     }
 
     override fun isSupportedFile(file: VirtualFile): Boolean {
-        val root = GoClueIndexer.findModuleRoot(file.path) ?: goClueReadAction { project.basePath }?.let { java.io.File(it) }
-        return isSupportedTemplate(file) && (root == null || GoClueIndexer.enabled(project, root))
+        return isSupportedTemplate(file) &&
+            GoClueIndexer.findModuleRoot(file.path)?.canonicalFile == root.canonicalFile &&
+            GoClueIndexer.enabled(project, root)
     }
 
     override fun createCommandLine(): GeneralCommandLine {
-        val root = goClueReadAction { project.basePath } ?: "."
-        val executable = goClueLspExecutable(root)
-        GoClueIndexer.rememberLspExecutable(executable, File(root))
-        return GeneralCommandLine(executable, "lsp", root).withWorkDirectory(root)
+        val executable = goClueLspExecutable(root.path)
+        GoClueIndexer.rememberLspExecutable(executable, root)
+        return GeneralCommandLine(executable, "lsp", root.path)
+            .withWorkDirectory(root)
+            .withEnvironment(GoClueIndexer.commandEnvironment(root))
     }
 }
 
@@ -112,5 +119,5 @@ private fun cleanupOldLspCopies(cacheDir: File) {
 }
 
 private fun isWindows(): Boolean {
-    return System.getProperty("os.name").lowercase().contains("win")
+    return System.getProperty("os.name").startsWith("Windows", ignoreCase = true)
 }

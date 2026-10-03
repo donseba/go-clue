@@ -14,7 +14,7 @@ object GoClueCliInstaller {
         ApplicationManager.getApplication().invokeLater {
             val answer = Messages.showYesNoDialog(
                 project,
-                "go-clue was not found by GoLand.\n\nInstall it now with:\n\ngo install github.com/donseba/go-clue@main",
+                "go-clue was not found by GoLand.\n\nInstall it now with:\n\ngo install github.com/donseba/go-clue@latest",
                 "Install go-clue CLI",
                 "Install",
                 "Cancel",
@@ -24,7 +24,7 @@ object GoClueCliInstaller {
 
             object : Task.Backgroundable(project, "Installing go-clue CLI", false) {
                 override fun run(indicator: ProgressIndicator) {
-                    indicator.text = "Running go install github.com/donseba/go-clue@main"
+                    indicator.text = "Running go install github.com/donseba/go-clue@latest"
                     val install = GoClueIndexer.install(root)
                     if (install.exitCode != 0) {
                         notify(project, "go-clue install failed", install.stderr.ifBlank { install.stdout }, NotificationType.ERROR)

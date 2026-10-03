@@ -75,27 +75,23 @@ contract that editors and tools can understand.
 
 ## Install
 
-Use `@main` during the rename transition. Existing release tags declare the old
-`github.com/donseba/go-doc` module path; `@latest` will become usable after the
-first release published with the new module path.
-
 Install the CLI:
 
 ```bash
-go install github.com/donseba/go-clue@main
+go install github.com/donseba/go-clue@latest
 ```
 
 Install the experimental helper generator when using `@gen`:
 
 ```bash
-go install github.com/donseba/go-clue/cmd/go-clue-exp-gen@main
+go install github.com/donseba/go-clue/cmd/go-clue-exp-gen@latest
 ```
 
 Then install the editor package you use from the release assets.
 
 On Windows, the GoLand and VS Code integrations run the long-lived language
 server from a temporary copy of `go-clue.exe`. That keeps `go install
-github.com/donseba/go-clue@main` able to replace the installed binary while the
+github.com/donseba/go-clue@latest` able to replace the installed binary while the
 editor is open. Restart the LSP/editor to pick up the newly installed version.
 The editor status commands show both the installed CLI version and the active
 LSP copy version.
@@ -628,9 +624,24 @@ On macOS it uses Homebrew.
 
 Build outputs are collected locally in `dist`.
 
+Pushing a version tag such as `v0.15.0` starts the GitHub Actions release
+workflow. It sets the editor package versions from the tag, runs tests, builds
+all five editor packages, checks their identities and SHA-256 checksums, and
+uploads the packages to a GitHub Release. No version commit is created by the
+workflow.
+
+```bash
+git tag -a v0.15.0 -m "go-clue v0.15.0"
+git push origin v0.15.0
+```
+
+The release workflow can also be run manually from the Actions tab with an
+existing version tag. CircleCI continues to run branch tests; GitHub Actions
+publishes releases.
+
 Release archives contain editor packages only. The CLI is distributed through:
 
 ```bash
-go install github.com/donseba/go-clue@main
-go install github.com/donseba/go-clue/cmd/go-clue-exp-gen@main
+go install github.com/donseba/go-clue@latest
+go install github.com/donseba/go-clue/cmd/go-clue-exp-gen@latest
 ```

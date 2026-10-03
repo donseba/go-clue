@@ -230,14 +230,14 @@ async function offerInstall(root, notify) {
   installPromptOpen = true;
   try {
     const answer = await vscode.window.showWarningMessage(
-      "go-clue is not available on PATH. Install it now with `go install github.com/donseba/go-clue@main`?",
+      "go-clue is not available on PATH. Install it now with `go install github.com/donseba/go-clue@latest`?",
       { modal: true },
       "Install",
     );
     if (answer !== "Install") return false;
 
-    output.appendLine("Installing go-clue CLI: go install github.com/donseba/go-clue@main");
-    const result = await execFile("go", ["install", "github.com/donseba/go-clue@main"], root);
+    output.appendLine("Installing go-clue CLI: go install github.com/donseba/go-clue@latest");
+    const result = await execFile("go", ["install", "github.com/donseba/go-clue@latest"], root);
     if (result.stdout) output.appendLine(result.stdout);
     if (result.stderr) output.appendLine(result.stderr);
     if (result.err) {

@@ -102,7 +102,7 @@ tasks:
     platforms: [darwin, linux]
     dir: "{{.GOLAND_DIR}}"
     cmds:
-      - gradle buildPlugin
+      - gradle test buildPlugin
 
   build:vscode:
     desc: Build the VS Code extension VSIX

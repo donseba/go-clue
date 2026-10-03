@@ -10,7 +10,7 @@ if (Test-Path $jdkHome) {
 
 Push-Location (Join-Path $root "ide\goland")
 try {
-    gradle buildPlugin
+    gradle test buildPlugin
 } finally {
     Pop-Location
 }

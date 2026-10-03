@@ -4,7 +4,7 @@ plugins {
 }
 
 group = "com.donseba.goclue"
-version = "0.14.0"
+version = "0.15.0"
 
 kotlin {
     jvmToolchain(21)
@@ -40,10 +40,14 @@ intellijPlatform {
 }
 
 dependencies {
+    testImplementation(kotlin("test-junit"))
     intellijPlatform {
         goland("2025.3")
         bundledPlugin("org.jetbrains.plugins.go-template")
     }
 }
 
+tasks.test {
+    useJUnit()
+}
 

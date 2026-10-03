@@ -2,7 +2,7 @@
   "name": "go-clue-vscode",
   "displayName": "go-clue",
   "description": "Typed Go template contracts with completion, diagnostics, hover, navigation, semantic highlighting, static FuncMap discovery, and provider package support.",
-  "version": "0.14.0",
+  "version": "0.15.0",
   "publisher": "donseba",
   "author": {
     "name": "Sebastiano Bellinzis",

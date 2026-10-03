@@ -13,7 +13,7 @@ Install Sublime's `LSP` package through Package Control.
 Install `go-clue` on your PATH:
 
 ```bash
-go install github.com/donseba/go-clue@main
+go install github.com/donseba/go-clue@latest
 ```
 
 ## Install

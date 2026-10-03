@@ -1,7 +1,9 @@
 package com.donseba.goclue
 
 import com.intellij.openapi.application.ApplicationManager
+import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.project.Project
+import com.intellij.openapi.roots.ProjectRootManager
 import com.intellij.openapi.vfs.LocalFileSystem
 import java.io.File
 import java.security.MessageDigest
@@ -10,6 +12,7 @@ import java.util.regex.Pattern
 import java.util.concurrent.TimeUnit
 
 object GoClueIndexer {
+    private val runtime = GoClueRuntime()
     private val pendingShadowBuilds = ConcurrentHashMap.newKeySet<String>()
 
     @Volatile
@@ -23,15 +26,30 @@ object GoClueIndexer {
     var lastLspVersion: String? = null
         private set
 
+    @Volatile
+    var lastLspRoot: String? = null
+        private set
+
     fun findModuleRoot(filePath: String?): File? {
-        if (filePath == null) return null
-        var dir = File(filePath).let { if (it.isDirectory) it else it.parentFile }
-        while (dir != null) {
-            if (File(dir, "go.mod").isFile) return dir
-            dir = dir.parentFile
-        }
-        return null
+        return runtime.findModuleRoot(filePath)
     }
+
+    fun moduleRoots(project: Project): List<File> {
+        val paths = goClueReadAction {
+            FileEditorManager.getInstance(project).openFiles.map { it.path } +
+                ProjectRootManager.getInstance(project).contentRoots.map { it.path } +
+                listOfNotNull(project.basePath)
+        }
+        return paths.mapNotNull(::findModuleRoot).distinctBy { it.canonicalPath }
+    }
+
+    fun moduleRoot(project: Project, filePath: String? = null): File? {
+        findModuleRoot(filePath)?.let { return it }
+        val selected = goClueReadAction { FileEditorManager.getInstance(project).selectedFiles.map { it.path } }
+        return selected.firstNotNullOfOrNull(::findModuleRoot) ?: moduleRoots(project).singleOrNull()
+    }
+
+    fun commandEnvironment(root: File): Map<String, String> = runtime.commandEnvironment(root)
 
     fun run(root: File, outFile: File): ProcessResult {
         val commands = executableCommands(root, "go-clue", "index", "-o", outFile.path, ".")
@@ -56,6 +74,7 @@ object GoClueIndexer {
                 val process = ProcessBuilder(command)
                     .directory(root)
                     .redirectErrorStream(false)
+                    .apply { environment().putAll(commandEnvironment(root)) }
                     .start()
                 val finished = process.waitFor(timeoutSeconds, TimeUnit.SECONDS)
                 if (!finished) {
@@ -74,7 +93,7 @@ object GoClueIndexer {
         return ProcessResult(
             1,
             "",
-            "Could not find go-clue. Install it with: go install github.com/donseba/go-clue@main\n$lastError",
+            "Could not find go-clue. Install it with: go install github.com/donseba/go-clue@latest\n$lastError",
             missingGoClue = executableMissing,
         )
     }
@@ -145,7 +164,7 @@ object GoClueIndexer {
     }
 
     fun install(root: File): ProcessResult {
-        val commands = executableCommands(root, "go", "install", "github.com/donseba/go-clue@main")
+        val commands = executableCommands(root, "go", "install", "github.com/donseba/go-clue@latest")
 
         var lastError = ""
         var executableMissing = false
@@ -154,6 +173,7 @@ object GoClueIndexer {
                 val process = ProcessBuilder(command)
                     .directory(root)
                     .redirectErrorStream(false)
+                    .apply { environment().putAll(commandEnvironment(root)) }
                     .start()
                 val finished = process.waitFor(120, TimeUnit.SECONDS)
                 if (!finished) {
@@ -183,6 +203,7 @@ object GoClueIndexer {
             val process = ProcessBuilder(resolvedCommand, "version")
                 .directory(root)
                 .redirectErrorStream(true)
+                .apply { environment().putAll(commandEnvironment(root)) }
                 .start()
             if (!process.waitFor(5, TimeUnit.SECONDS)) {
                 process.destroyForcibly()
@@ -207,6 +228,7 @@ object GoClueIndexer {
                 val process = ProcessBuilder(command)
                     .directory(root)
                     .redirectErrorStream(true)
+                    .apply { environment().putAll(commandEnvironment(root)) }
                     .start()
                 if (!process.waitFor(5, TimeUnit.SECONDS)) {
                     process.destroyForcibly()
@@ -226,6 +248,7 @@ object GoClueIndexer {
 
     fun rememberLspExecutable(command: String, root: File) {
         lastLspExecutable = command
+        lastLspRoot = root.path
         lastLspVersion = commandVersion(command, root)
     }
 
@@ -234,90 +257,14 @@ object GoClueIndexer {
     }
 
     private fun executableCommands(root: File, executable: String, vararg args: String): List<List<String>> {
-        val executables = buildList {
-            addAll(platformExecutableNames(executable))
-            when (executable) {
-                "go" -> addAll(goExecutableCandidates())
-                "go-clue" -> addAll(goClueExecutableCandidates(root))
-            }
-        }.distinct()
-        return executables.map { listOf(it, *args) }
+        val resolved = runtime.findExecutable(root, executable)?.path ?: platformExecutableNames(executable).first()
+        return listOf(listOf(resolved, *args))
     }
 
-    private fun findExecutable(root: File, executable: String): File? {
-        return executableCommands(root, executable).asSequence()
-            .map { File(it.first()) }
-            .filter { it.isAbsolute && it.isFile && it.canExecute() }
-            .firstOrNull()
-    }
+    private fun findExecutable(root: File, executable: String): File? = runtime.findExecutable(root, executable)
 
-    private fun platformExecutableNames(executable: String): List<String> {
-        return if (isWindows()) listOf(executable, "$executable.exe") else listOf(executable)
-    }
-
-    private fun goExecutableCandidates(): List<String> {
-        val names = platformExecutableNames("go")
-        return buildList {
-            System.getenv("GOROOT")?.takeIf { it.isNotBlank() }?.let { goRoot ->
-                names.forEach { add(File(File(goRoot, "bin"), it).path) }
-            }
-            if (isWindows()) {
-                listOf("ProgramFiles", "ProgramFiles(x86)").forEach { env ->
-                    System.getenv(env)?.takeIf { it.isNotBlank() }?.let { base ->
-                        names.forEach { add(File(File(base, "Go\\bin"), it).path) }
-                    }
-                }
-            } else {
-                listOf("/usr/local/go/bin", "/opt/homebrew/bin", "/usr/local/bin", "/opt/local/bin")
-                    .forEach { dir -> names.forEach { add(File(dir, it).path) } }
-            }
-        }.filter { File(it).isFile && File(it).canExecute() }
-    }
-
-    private fun goClueExecutableCandidates(root: File): List<String> {
-        val names = platformExecutableNames("go-clue")
-        val paths = buildList {
-            System.getenv("GOBIN")?.takeIf { it.isNotBlank() }?.let { add(it) }
-            System.getenv("GOPATH")
-                ?.split(File.pathSeparator)
-                ?.filter { it.isNotBlank() }
-                ?.forEach { add(File(it, "bin").path) }
-            goEnvValue(root, "GOBIN")?.takeIf { it.isNotBlank() }?.let { add(it) }
-            goEnvValue(root, "GOPATH")
-                ?.split(File.pathSeparator)
-                ?.filter { it.isNotBlank() }
-                ?.forEach { add(File(it, "bin").path) }
-            System.getProperty("user.home")?.takeIf { it.isNotBlank() }?.let { add(File(it, "go/bin").path) }
-        }.distinct()
-
-        return paths
-            .flatMap { dir -> names.map { File(dir, it).path } }
-            .filter { File(it).isFile && File(it).canExecute() }
-    }
-
-    private fun goEnvValue(root: File, name: String): String? {
-        for (command in executableCommands(root, "go", "env", name)) {
-            try {
-                val process = ProcessBuilder(command)
-                    .directory(root)
-                    .redirectErrorStream(true)
-                    .start()
-                if (!process.waitFor(5, TimeUnit.SECONDS)) {
-                    process.destroyForcibly()
-                    continue
-                }
-                val value = process.inputStream.bufferedReader().readText().trim()
-                if (value.isNotBlank()) return value
-            } catch (_: Exception) {
-                continue
-            }
-        }
-        return null
-    }
-
-    private fun isWindows(): Boolean {
-        return System.getProperty("os.name").lowercase().contains("win")
-    }
+    private fun platformExecutableNames(executable: String): List<String> =
+        if (runtime.isWindows) listOf("$executable.exe", executable) else listOf(executable)
 
     data class ProcessResult(
         val exitCode: Int,

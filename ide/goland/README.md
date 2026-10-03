@@ -11,17 +11,29 @@ hover, and navigation.
 Install `go-clue` on your PATH:
 
 ```bash
-go install github.com/donseba/go-clue@main
+go install github.com/donseba/go-clue@latest
 ```
 
 If `go-clue` is missing, the plugin can offer to install it with the same command.
 
 On Windows, the plugin starts the long-lived LSP from a temporary copy of
-`go-clue.exe`. That means `go install github.com/donseba/go-clue@main` can
+`go-clue.exe`. That means `go install github.com/donseba/go-clue@latest` can
 replace the installed binary while GoLand is open. Restart the LSP/editor to use
 the newly installed version.
 `Tools > Show go-clue Status` shows both the installed CLI version and the active
-LSP copy version.
+LSP copy version, the resolved executable, and the selected Go module root.
+
+The plugin uses the nearest `go.mod` above each opened template, including
+nested modules and projects opened from a parent folder. Each module gets its
+own language server and index.
+
+On macOS, GoLand launched from Finder may have a different `PATH` from your
+terminal. The plugin checks `PATH`, `GOBIN`, the configured `GOPATH`, and the
+default `~/go/bin` directory for the global executable. It also puts the
+resolved Go toolchain on the language server's `PATH` so it can load packages.
+
+When upgrading from go-doc, uninstall the old go-doc editor plugin before
+installing go-clue to keep one template language server active.
 
 ## Quick Start
 
