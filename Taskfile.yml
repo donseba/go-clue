@@ -121,11 +121,8 @@ tasks:
   build:vscode:unix:
     internal: true
     platforms: [darwin, linux]
-    dir: "{{.VSCODE_DIR}}"
     cmds:
-      - npm ci
-      - node --check extension.js
-      - npx --yes @vscode/vsce package --out "../../{{.DIST_DIR}}/go-clue-vscode-$(node -p \"require('./package.json').version\").vsix"
+      - bash scripts/build-vscode.sh
 
   build:sublime:
     desc: Build the Sublime Text package

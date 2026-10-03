@@ -1,6 +1,6 @@
 {
   "name": "go-clue-sublime",
-  "version": "0.13.5",
+  "version": "0.14.0",
   "description": "Sublime Text LSP configuration for go-clue typed Go templates.",
   "author": "Sebastiano Bellinzis <sebastiano.bellinzis@outlook.com> (https://github.com/donseba)",
   "icon": "icon.png",

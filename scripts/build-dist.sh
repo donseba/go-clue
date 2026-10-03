@@ -15,10 +15,7 @@ gradle buildPlugin
 GOLAND_VERSION="$(gradle -q properties | awk -F': ' '/^version:/ {print $2; exit}')"
 cp "build/distributions/go-clue-goland-plugin-${GOLAND_VERSION}.zip" "${DIST}/"
 
-cd "${ROOT}/ide/vscode"
-npm ci
-node --check extension.js
-npx --yes @vscode/vsce package --out "${DIST}/go-clue-vscode-$(node -p "require('./package.json').version").vsix"
+bash "${ROOT}/scripts/build-vscode.sh"
 
 bash "${ROOT}/scripts/build-sublime.sh"
 bash "${ROOT}/scripts/build-vim.sh"
