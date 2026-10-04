@@ -1026,14 +1026,21 @@ func activeDefineNameAt(text string, offset int) string {
 			stack = append(stack, match[1])
 			continue
 		}
+		if opensTemplateBlock(content) {
+			// Other blocks are tracked unnamed so their {{end}} does not close the define.
+			stack = append(stack, "")
+			continue
+		}
 		if content == "end" && len(stack) > 0 {
 			stack = stack[:len(stack)-1]
 		}
 	}
-	if len(stack) == 0 {
-		return ""
+	for i := len(stack) - 1; i >= 0; i-- {
+		if stack[i] != "" {
+			return stack[i]
+		}
 	}
-	return stack[len(stack)-1]
+	return ""
 }
 
 func mergeInlineContract(text string, idx lspIndex, base templateIndex) templateIndex {
@@ -1165,9 +1172,17 @@ func defineBlocks(text string) []defineBlock {
 			stack = append(stack, openDefine{name: match[1], start: action[0], bodyStart: action[1]})
 			continue
 		}
+		if opensTemplateBlock(content) {
+			// Other blocks are tracked unnamed so their {{end}} does not close the define.
+			stack = append(stack, openDefine{})
+			continue
+		}
 		if content == "end" && len(stack) > 0 {
 			open := stack[len(stack)-1]
 			stack = stack[:len(stack)-1]
+			if open.name == "" {
+				continue
+			}
 			blocks = append(blocks, defineBlock{
 				name:      open.name,
 				start:     open.start,
@@ -1350,8 +1365,8 @@ func diagnosticsForTextScoped(text string, idx lspIndex, contract templateIndex,
 			if !ok {
 				continue
 			}
-			owner := idx.Types[ref.ownerType]
-			if hasMember(owner, ref.fieldName) {
+			owner, known := idx.Types[ref.ownerType]
+			if !known || hasMember(owner, ref.fieldName) {
 				continue
 			}
 			if !strings.HasSuffix(token, "."+ref.fieldName) {
@@ -1704,6 +1719,35 @@ func actionContent(actionText string) (string, int, bool) {
 		contentEnd--
 	}
 	return actionText[contentStart:contentEnd], contentStart, true
+}
+
+// templateBlockKeywords are the actions that a later {{end}} closes.
+var templateBlockKeywords = map[string]bool{
+	"if":     true,
+	"range":  true,
+	"with":   true,
+	"define": true,
+	"block":  true,
+}
+
+// opensTemplateBlock reports whether trimmed action content starts a block that
+// a later {{end}} closes, so callers can pair every {{end}} with its own block.
+func opensTemplateBlock(content string) bool {
+	return templateBlockKeywords[actionKeyword(content)]
+}
+
+// actionKeyword returns the leading identifier of trimmed action content, for
+// example "range" for "range $i, $item := .Items" or "if" for "if(.Ready)".
+func actionKeyword(content string) string {
+	end := 0
+	for end < len(content) && isKeywordChar(content[end]) {
+		end++
+	}
+	return content[:end]
+}
+
+func isKeywordChar(b byte) bool {
+	return b == '_' || (b >= 'A' && b <= 'Z') || (b >= 'a' && b <= 'z') || (b >= '0' && b <= '9')
 }
 
 type templateIncludeRef struct {
@@ -3754,6 +3798,7 @@ func resolveFieldValuePath(idx lspIndex, rootType string, fields []string) strin
 		if !ok {
 			return ""
 		}
+		valueType = qualifyMemberType(idx, typ, valueType)
 		if i == len(fields)-1 {
 			return valueType
 		}
@@ -3781,6 +3826,22 @@ func memberValueType(typ goTypeIndex, name string) (string, bool) {
 		return method.Type, true
 	}
 	return "", false
+}
+
+// qualifyMemberType qualifies a member type declared in the owner's own package.
+// The index stores those unqualified ("Site", "[]MenuItem", "*Page"), which is
+// ambiguous as soon as another package declares a type with the same name.
+func qualifyMemberType(idx lspIndex, owner goTypeIndex, typeExpr string) string {
+	typeExpr = strings.TrimSpace(typeExpr)
+	base := normalizeValueType(typeExpr)
+	if owner.Package == "" || base == "" || strings.ContainsAny(base, ".[]{}") {
+		return typeExpr
+	}
+	qualified := owner.Package + "." + base
+	if _, ok := idx.Types[qualified]; !ok {
+		return typeExpr
+	}
+	return strings.TrimSuffix(typeExpr, base) + qualified
 }
 
 func resolveGoType(idx lspIndex, typeExpr string) string {
@@ -3883,8 +3944,8 @@ func scopeAt(text string, offset int, idx lspIndex, contract templateIndex) scop
 	before := text[:max(0, min(offset, len(text)))]
 	for _, match := range lspScopeActionPattern.FindAllStringSubmatchIndex(before, -1) {
 		action := strings.TrimSpace(strings.Trim(before[match[2]:match[3]], "- "))
-		keyword, expression, _ := strings.Cut(action, " ")
-		expression = strings.TrimSpace(expression)
+		keyword := actionKeyword(action)
+		expression := strings.TrimSpace(action[len(keyword):])
 		parent := stack[len(stack)-1]
 		switch keyword {
 		case "range":
@@ -3894,6 +3955,17 @@ func scopeAt(text string, offset int, idx lspIndex, contract templateIndex) scop
 		case "with":
 			valueType := resolveExpressionType(idx, contract, sourceExpression(expression), parent.dotType)
 			stack = append(stack, scope{dotType: valueType, vars: mergeVars(parent.vars, assignedVariable(expression, idx, contract, parent.dotType))})
+		case "if":
+			// if keeps the dot, but still needs a scope so its {{end}} does not close an outer range or with.
+			stack = append(stack, scope{dotType: parent.dotType, vars: mergeVars(parent.vars, assignedVariable(expression, idx, contract, parent.dotType))})
+		case "define":
+			stack = append(stack, scope{dotType: contract.Dot, vars: map[string]string{}})
+		case "block":
+			stack = append(stack, scope{dotType: blockDotType(idx, contract, action, parent.dotType), vars: map[string]string{}})
+		case "else":
+			if len(stack) > 1 {
+				stack[len(stack)-1] = elseScope(idx, contract, expression, stack[len(stack)-2], parent)
+			}
 		case "end":
 			if len(stack) > 1 {
 				stack = stack[:len(stack)-1]
@@ -3903,6 +3975,27 @@ func scopeAt(text string, offset int, idx lspIndex, contract templateIndex) scop
 		}
 	}
 	return stack[len(stack)-1]
+}
+
+// elseScope is the scope of an else branch. The else branch of a range or with
+// sees the outer dot again; "else with" moves the dot to its own value.
+func elseScope(idx lspIndex, contract templateIndex, expression string, outer, current scope) scope {
+	if actionKeyword(expression) != "with" {
+		return scope{dotType: outer.dotType, vars: current.vars}
+	}
+	withExpression := strings.TrimSpace(expression[len("with"):])
+	valueType := resolveExpressionType(idx, contract, sourceExpression(withExpression), outer.dotType)
+	return scope{dotType: valueType, vars: mergeVars(current.vars, assignedVariable(withExpression, idx, contract, outer.dotType))}
+}
+
+// blockDotType is the dot inside {{block "name" pipeline}}: the pipeline value,
+// or nothing when the block has no pipeline.
+func blockDotType(idx lspIndex, contract templateIndex, action, dotType string) string {
+	match := lspTemplateCallRegexp.FindStringSubmatch(action)
+	if len(match) != 3 || strings.TrimSpace(match[2]) == "" {
+		return ""
+	}
+	return resolveExpressionType(idx, contract, match[2], dotType)
 }
 
 func sourceExpression(expression string) string {
@@ -4066,6 +4159,7 @@ func fieldReferencesForToken(text string, start, end int, idx lspIndex, contract
 		if !ok {
 			return refs
 		}
+		valueType = qualifyMemberType(idx, owner, valueType)
 		ownerType = resolveGoType(idx, valueType)
 		if ownerType == "" {
 			ownerType = valueType

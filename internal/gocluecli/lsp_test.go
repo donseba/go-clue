@@ -2102,6 +2102,157 @@ func TestLSPDiagnosticsUseRangeDotType(t *testing.T) {
 	}
 }
 
+func TestLSPDiagnosticsKeepRangeDotAcrossNestedIf(t *testing.T) {
+	idx := lspIndex{indexFile: indexFile{
+		Types: map[string]goTypeIndex{
+			"example.com/app.View": {
+				Name: "View",
+				Fields: map[string]fieldIndex{
+					"Title": {Type: "string"},
+					"Path":  {Type: "string"},
+					"Menu":  {Type: "[]MenuItem"},
+					"Page":  {Type: "*Page"},
+					"Image": {Type: "string"},
+				},
+			},
+			"example.com/app.MenuItem": {
+				Name: "MenuItem",
+				Fields: map[string]fieldIndex{
+					"Title":    {Type: "string"},
+					"URL":      {Type: "string"},
+					"Active":   {Type: "bool"},
+					"Children": {Type: "[]MenuItem"},
+				},
+			},
+			"example.com/app.Page": {
+				Name: "Page",
+				Fields: map[string]fieldIndex{
+					"Title": {Type: "string"},
+					"Body":  {Type: "string"},
+				},
+			},
+		},
+		Short: map[string][]string{
+			"View":     {"example.com/app.View"},
+			"MenuItem": {"example.com/app.MenuItem"},
+			"Page":     {"example.com/app.Page"},
+		},
+	}}
+	contract := templateIndex{Dot: "example.com/app.View"}
+
+	menu := `{{range .Menu}}
+	{{if .Children}}
+		<a href="{{.URL}}" {{if .Active}}aria-current="page"{{end}}>{{.Title}}</a>
+		{{range .Children}}<a href="{{.URL}}" {{if .Active}}aria-current="page"{{end}}>{{.Title}}</a>{{end}}
+	{{else}}
+		<a href="{{.URL}}" {{if .Active}}aria-current="page"{{end}}>{{.Title}}</a>
+	{{end}}
+{{end}}
+<title>{{.Title}}</title>`
+	if diagnostics := diagnosticsForText(menu, idx, contract); len(diagnostics) != 0 {
+		t.Fatalf("diagnostics = %#v, want none for if blocks nested in range", diagnostics)
+	}
+
+	diagnostics := diagnosticsForText(`{{range .Menu}}{{if .Active}}x{{end}}{{.Nope}}{{end}}{{.URL}}`, idx, contract)
+	assertDiagnostic(t, diagnostics, "Unknown field 'Nope' on MenuItem")
+	assertDiagnostic(t, diagnostics, "Unknown field 'URL' on View")
+
+	page := `{{with .Page}}{{if .Title}}{{.Title}}{{end}}{{.Body}}{{end}}`
+	if diagnostics := diagnosticsForText(page, idx, contract); len(diagnostics) != 0 {
+		t.Fatalf("diagnostics = %#v, want none for if blocks nested in with", diagnostics)
+	}
+
+	elses := `{{range .Menu}}{{.URL}}{{else}}{{.Path}}{{end}}
+{{with .Page}}{{.Body}}{{else}}{{.Path}}{{end}}
+{{with .Image}}{{.}}{{else with .Page}}{{.Body}}{{end}}`
+	if diagnostics := diagnosticsForText(elses, idx, contract); len(diagnostics) != 0 {
+		t.Fatalf("diagnostics = %#v, want else branches to use the outer dot", diagnostics)
+	}
+}
+
+func TestLSPDiagnosticsResolveSamePackageFieldTypesWithSharedShortNames(t *testing.T) {
+	idx := lspIndex{indexFile: indexFile{
+		Types: map[string]goTypeIndex{
+			"example.com/app/frontend.View": {
+				Name:    "View",
+				Package: "example.com/app/frontend",
+				Fields: map[string]fieldIndex{
+					"Site": {Type: "Site"},
+					"Menu": {Type: "[]MenuItem"},
+					"Page": {Type: "*Page"},
+				},
+			},
+			"example.com/app/frontend.Site": {
+				Name:    "Site",
+				Package: "example.com/app/frontend",
+				Fields:  map[string]fieldIndex{"FaviconURL": {Type: "string"}},
+			},
+			"example.com/app/frontend.MenuItem": {
+				Name:    "MenuItem",
+				Package: "example.com/app/frontend",
+				Fields:  map[string]fieldIndex{"URL": {Type: "string"}},
+			},
+			"example.com/app/frontend.Page": {
+				Name:    "Page",
+				Package: "example.com/app/frontend",
+				Fields:  map[string]fieldIndex{"Body": {Type: "string"}},
+			},
+			"example.com/app/sitetest.Site": {
+				Name:    "Site",
+				Package: "example.com/app/sitetest",
+				Fields:  map[string]fieldIndex{"Seed": {Type: "string"}},
+			},
+			"example.com/app/sitetest.MenuItem": {
+				Name:    "MenuItem",
+				Package: "example.com/app/sitetest",
+			},
+			"example.com/app/sitetest.Page": {
+				Name:    "Page",
+				Package: "example.com/app/sitetest",
+			},
+		},
+		Short: map[string][]string{
+			"View":     {"example.com/app/frontend.View"},
+			"Site":     {"example.com/app/frontend.Site", "example.com/app/sitetest.Site"},
+			"MenuItem": {"example.com/app/frontend.MenuItem", "example.com/app/sitetest.MenuItem"},
+			"Page":     {"example.com/app/frontend.Page", "example.com/app/sitetest.Page"},
+		},
+	}}
+	contract := templateIndex{Dot: "example.com/app/frontend.View"}
+
+	text := `{{.Site.FaviconURL}}{{range .Menu}}{{.URL}}{{end}}{{with .Page}}{{.Body}}{{end}}`
+	if diagnostics := diagnosticsForText(text, idx, contract); len(diagnostics) != 0 {
+		t.Fatalf("diagnostics = %#v, want same-package field types resolved", diagnostics)
+	}
+
+	diagnostics := diagnosticsForText(`{{.Site.Seed}}{{range .Menu}}{{.Nope}}{{end}}`, idx, contract)
+	assertDiagnostic(t, diagnostics, "Unknown field 'Seed' on Site")
+	assertDiagnostic(t, diagnostics, "Unknown field 'Nope' on MenuItem")
+}
+
+func TestLSPDefineBlocksPairEndWithNestedBlocks(t *testing.T) {
+	text := `<h1>top</h1>
+{{define "row"}}{{if .Active}}<b>active</b>{{end}}<td>{{.Name}}</td>{{end}}
+<footer>top</footer>`
+
+	if name := activeDefineNameAt(text, strings.Index(text, ".Name")); name != "row" {
+		t.Fatalf("activeDefineNameAt() = %q, want row after a nested if", name)
+	}
+
+	if name := activeDefineNameAt(text, strings.Index(text, "<footer>")); name != "" {
+		t.Fatalf("activeDefineNameAt() = %q, want top level after the define", name)
+	}
+
+	body, ok := defineBodyText(text, "row")
+	if !ok || body != `{{if .Active}}<b>active</b>{{end}}<td>{{.Name}}</td>` {
+		t.Fatalf("defineBodyText() = %q, %v", body, ok)
+	}
+
+	if top := topLevelTemplateText(text); strings.Contains(top, ".Name") {
+		t.Fatalf("topLevelTemplateText() = %q, want define body excluded", top)
+	}
+}
+
 func TestLSPDiagnosticsUseDotContractAsRootDotType(t *testing.T) {
 	idx := lspIndex{indexFile: indexFile{
 		Types: map[string]goTypeIndex{
