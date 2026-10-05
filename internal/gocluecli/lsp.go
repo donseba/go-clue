@@ -244,13 +244,31 @@ type semanticToken struct {
 	start     int
 	length    int
 	tokenType int
+	modifiers int
 }
 
+// Semantic token types, in the order of semanticTokenTypes.
 const (
-	semanticAccessor = iota
+	// semanticVariable is a template variable such as $item.
+	semanticVariable = iota
 	semanticField
 	semanticType
 	semanticFunction
+	semanticMethod
+	// semanticParameter is a typed root such as Page, the data a template
+	// receives.
+	semanticParameter
+	// semanticNamespace is an @gen helper namespace.
+	semanticNamespace
+)
+
+// semanticDefaultLibrary marks the built-in template functions, such as eq
+// and len.
+const semanticDefaultLibrary = 1 << 0
+
+var (
+	semanticTokenTypes     = []string{"variable", "property", "type", "function", "method", "parameter", "namespace"}
+	semanticTokenModifiers = []string{"defaultLibrary"}
 )
 
 const (
@@ -395,8 +413,8 @@ func (s *lspServer) handleRequest(msg rpcMessage) (any, *rpcError) {
 				"executeCommandProvider": map[string]any{"commands": []string{lspCommandMissingFieldApplied}},
 				"semanticTokensProvider": map[string]any{
 					"legend": map[string]any{
-						"tokenTypes":     []string{"variable", "property", "type", "function"},
-						"tokenModifiers": []string{},
+						"tokenTypes":     semanticTokenTypes,
+						"tokenModifiers": semanticTokenModifiers,
 					},
 					"full": true,
 				},
@@ -3351,7 +3369,7 @@ func semanticTokensForTextScoped(text string, idx lspIndex, contract templateInd
 			continue
 		}
 		if contract.Roots[ref.name] != "" {
-			tokens = append(tokens, semanticToken{start: ref.nameStart, length: ref.nameEnd - ref.nameStart, tokenType: semanticAccessor})
+			tokens = append(tokens, semanticToken{start: ref.nameStart, length: ref.nameEnd - ref.nameStart, tokenType: semanticParameter})
 		}
 		if ref.typeStart >= 0 && ref.typeName != "" {
 			if resolveGoType(idx, ref.typeName) != "" || idx.Types[ref.typeName].Name != "" {
@@ -3401,7 +3419,7 @@ func semanticTokensForTextScoped(text string, idx lspIndex, contract templateInd
 		if _, _, ok := contract.typedRootType(name); !ok && contract.Gens[name] == "" {
 			continue
 		}
-		tokens = append(tokens, semanticToken{start: nameStart, length: nameEnd - nameStart, tokenType: semanticAccessor})
+		tokens = append(tokens, semanticToken{start: nameStart, length: nameEnd - nameStart, tokenType: semanticNamespace})
 		shortStart := pkgStart + len(pkg) - len(shortTypeName(pkg))
 		tokens = append(tokens, semanticToken{start: shortStart, length: pkgEnd - shortStart, tokenType: semanticType})
 	}
@@ -3415,7 +3433,7 @@ func semanticTokensForTextScoped(text string, idx lspIndex, contract templateInd
 				tokens = append(tokens, semanticToken{start: shortStart, length: ref.typeEnd - shortStart, tokenType: semanticType})
 			}
 		}
-		tokens = append(tokens, semanticToken{start: ref.nameStart, length: ref.nameEnd - ref.nameStart, tokenType: semanticFunction})
+		tokens = append(tokens, semanticToken{start: ref.nameStart, length: ref.nameEnd - ref.nameStart, tokenType: semanticParameter})
 	}
 	for _, action := range lspActionPattern.FindAllStringIndex(text, -1) {
 		actionText := text[action[0]:action[1]]
@@ -3424,7 +3442,11 @@ func semanticTokensForTextScoped(text string, idx lspIndex, contract templateInd
 		}
 		actionContract := activeContractAt(text, idx, relative, contract, action[0])
 		for _, token := range templateFunctionTokensInAction(actionText, idx, actionContract) {
-			tokens = append(tokens, semanticToken{start: action[0] + token.start, length: token.end - token.start, tokenType: semanticFunction})
+			item := semanticToken{start: action[0] + token.start, length: token.end - token.start, tokenType: semanticFunction}
+			if _, ok := builtInTemplateFuncs[token.name]; ok && actionContract.Funcs[token.name] == "" {
+				item.modifiers = semanticDefaultLibrary
+			}
+			tokens = append(tokens, item)
 		}
 		for _, match := range lspAccessorPattern.FindAllStringIndex(actionText, -1) {
 			if inQuotedString(actionText, match[0]) {
@@ -3434,13 +3456,17 @@ func semanticTokensForTextScoped(text string, idx lspIndex, contract templateInd
 			end := action[0] + match[1]
 			token := actionText[match[0]:match[1]]
 			root := tokenRoot(token)
-			if _, _, ok := actionContract.typedRootType(root); ok || strings.HasPrefix(root, "$") {
-				tokens = append(tokens, semanticToken{start: start, length: len(root), tokenType: semanticAccessor})
+			if _, _, ok := actionContract.typedRootType(root); ok {
+				tokens = append(tokens, semanticToken{start: start, length: len(root), tokenType: semanticParameter})
+			} else if strings.HasPrefix(root, "$") {
+				tokens = append(tokens, semanticToken{start: start, length: len(root), tokenType: semanticVariable})
 			}
 			for _, ref := range fieldReferencesForToken(text, start, end, idx, actionContract) {
 				owner := idx.Types[ref.ownerType]
-				if hasMember(owner, ref.fieldName) {
+				if _, ok := owner.Fields[ref.fieldName]; ok {
 					tokens = append(tokens, semanticToken{start: ref.start, length: ref.end - ref.start, tokenType: semanticField})
+				} else if _, ok := owner.Methods[ref.fieldName]; ok {
+					tokens = append(tokens, semanticToken{start: ref.start, length: ref.end - ref.start, tokenType: semanticMethod})
 				}
 			}
 		}
@@ -3683,7 +3709,7 @@ func encodeSemanticTokens(text string, tokens []semanticToken) []int {
 		if deltaLine == 0 {
 			deltaStart -= prevChar
 		}
-		data = append(data, deltaLine, deltaStart, token.length, token.tokenType, 0)
+		data = append(data, deltaLine, deltaStart, token.length, token.tokenType, token.modifiers)
 		prevLine, prevChar = pos.Line, pos.Character
 	}
 	return data

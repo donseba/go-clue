@@ -813,7 +813,7 @@ func TestLSPUnderstandsConfiguredSymbols(t *testing.T) {
 	foundField := false
 	for _, token := range tokens {
 		value := text[token.start : token.start+token.length]
-		if (token.tokenType == semanticAccessor || token.tokenType == semanticFunction) && value == "LikesPoll" {
+		if token.tokenType == semanticParameter && value == "LikesPoll" {
 			if token.start < strings.Index(text, "{{ LikesPoll }}") {
 				foundDeclaration = true
 			} else {
@@ -1555,8 +1555,8 @@ func TestLSPSemanticTokensHighlightGeneratedNamespaces(t *testing.T) {
 		value     string
 		tokenType int
 	}{
-		{"time", semanticAccessor},
-		{"money", semanticAccessor},
+		{"time", semanticNamespace},
+		{"money", semanticNamespace},
 		{"timefuncs", semanticType},
 		{"moneyfuncs", semanticType},
 	} {
@@ -1748,9 +1748,14 @@ func TestLSPHighlightsFunctionResultSelectorChains(t *testing.T) {
 			t.Fatalf("tokens = %#v, want semantic function token for %s", tokens, name)
 		}
 	}
-	for _, name := range []string{"Path", "Key", "Token", "Context"} {
+	for _, name := range []string{"Path", "Context"} {
 		if !hasSemanticToken(text, tokens, name, semanticField) {
 			t.Fatalf("tokens = %#v, want semantic field token for %s", tokens, name)
+		}
+	}
+	for _, name := range []string{"Key", "Token"} {
+		if !hasSemanticToken(text, tokens, name, semanticMethod) {
+			t.Fatalf("tokens = %#v, want semantic method token for %s", tokens, name)
 		}
 	}
 	if got := semanticTokenCount(text, tokens, "Path", semanticField); got != 2 {
@@ -2689,13 +2694,13 @@ func TestLSPSemanticTokensHighlightModelAccessorAndField(t *testing.T) {
 	if len(tokens) != 4 {
 		t.Fatalf("len(tokens) = %d, want 4: %#v", len(tokens), tokens)
 	}
-	if tokens[0].tokenType != semanticAccessor || text[tokens[0].start:tokens[0].start+tokens[0].length] != "page" {
+	if tokens[0].tokenType != semanticParameter || text[tokens[0].start:tokens[0].start+tokens[0].length] != "page" {
 		t.Fatalf("model name token = %#v", tokens[0])
 	}
 	if tokens[1].tokenType != semanticType || text[tokens[1].start:tokens[1].start+tokens[1].length] != "Page" {
 		t.Fatalf("type token = %#v", tokens[1])
 	}
-	if tokens[2].tokenType != semanticAccessor || text[tokens[2].start:tokens[2].start+tokens[2].length] != "page" {
+	if tokens[2].tokenType != semanticParameter || text[tokens[2].start:tokens[2].start+tokens[2].length] != "page" {
 		t.Fatalf("accessor token = %#v", tokens[2])
 	}
 	if tokens[3].tokenType != semanticField || text[tokens[3].start:tokens[3].start+tokens[3].length] != "Title" {
@@ -3187,5 +3192,55 @@ func TestLSPMethodArgumentsEndWithTheirCommand(t *testing.T) {
 		`{{ if .End.Equal }}{{ end }}`:  "Function Equal expects 1 argument(s), got 0",
 	} {
 		assertDiagnostic(t, diagnosticsForText(header+text, idx, contract), message)
+	}
+}
+
+func TestLSPSemanticTokensDistinguishSymbolKinds(t *testing.T) {
+	idx := lspIndex{indexFile: indexFile{
+		Types: map[string]goTypeIndex{
+			"example.com/app.Page": {
+				Name:    "Page",
+				Fields:  map[string]fieldIndex{"Title": {Type: "string"}, "Items": {Type: "[]example.com/app.Item"}},
+				Methods: map[string]methodIndex{"Summary": {Type: "string"}},
+			},
+			"example.com/app.Item": {
+				Name:   "Item",
+				Fields: map[string]fieldIndex{"Name": {Type: "string"}},
+			},
+		},
+		Funcs: map[string]goFuncIndex{
+			"example.com/app.Upper": {Name: "Upper", Params: []string{"string"}, Result: "string", ReturnOK: true},
+		},
+		Short: map[string][]string{"Page": {"example.com/app.Page"}, "Item": {"example.com/app.Item"}},
+	}}
+	contract := templateIndex{
+		Roots: map[string]string{"Page": "example.com/app.Page"},
+		Funcs: map[string]string{"upper": "example.com/app.Upper"},
+	}
+	text := `{{ range $item := Page.Items }}{{ upper $item.Name }}{{ end }}{{ Page.Summary }}{{ len Page.Title }}`
+
+	tokens := semanticTokensForText(text, idx, contract)
+	for _, want := range []struct {
+		value     string
+		tokenType int
+		modifiers int
+	}{
+		{"Page", semanticParameter, 0},
+		{"$item", semanticVariable, 0},
+		{"Items", semanticField, 0},
+		{"Name", semanticField, 0},
+		{"Summary", semanticMethod, 0},
+		{"upper", semanticFunction, 0},
+		{"len", semanticFunction, semanticDefaultLibrary},
+	} {
+		found := false
+		for _, token := range tokens {
+			if text[token.start:token.start+token.length] == want.value && token.tokenType == want.tokenType && token.modifiers == want.modifiers {
+				found = true
+			}
+		}
+		if !found {
+			t.Fatalf("tokens = %#v, want %q as type %d with modifiers %d", tokens, want.value, want.tokenType, want.modifiers)
+		}
 	}
 }
