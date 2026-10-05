@@ -1,0 +1,45 @@
+<?xml version='1.0'?>
+<list>
+  <option name="GO_CLUE_FUNCTION">
+    <value>
+      <option name="FOREGROUND" value="DCDCAA"/>
+    </value>
+  </option>
+  <option name="GO_CLUE_BUILTIN_FUNCTION">
+    <value>
+      <option name="FOREGROUND" value="C586C0"/>
+    </value>
+  </option>
+  <option name="GO_CLUE_METHOD">
+    <value>
+      <option name="FOREGROUND" value="61AFEF"/>
+    </value>
+  </option>
+  <option name="GO_CLUE_FIELD">
+    <value>
+      <option name="FOREGROUND" value="E06C75"/>
+    </value>
+  </option>
+  <option name="GO_CLUE_VARIABLE">
+    <value>
+      <option name="FOREGROUND" value="D19A66"/>
+    </value>
+  </option>
+  <option name="GO_CLUE_ROOT">
+    <value>
+      <option name="FOREGROUND" value="56B6C2"/>
+      <option name="FONT_TYPE" value="1"/>
+    </value>
+  </option>
+  <option name="GO_CLUE_TYPE">
+    <value>
+      <option name="FOREGROUND" value="98C379"/>
+    </value>
+  </option>
+  <option name="GO_CLUE_NAMESPACE">
+    <value>
+      <option name="FOREGROUND" value="98C379"/>
+      <option name="FONT_TYPE" value="2"/>
+    </value>
+  </option>
+</list>

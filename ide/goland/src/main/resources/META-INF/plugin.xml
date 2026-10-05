@@ -15,6 +15,9 @@
         <psi.referenceContributor implementation="com.donseba.goclue.GoClueReferenceContributor"/>
         <gotoDeclarationHandler implementation="com.donseba.goclue.GoClueGotoDeclarationHandler"/>
         <documentationProvider implementation="com.donseba.goclue.GoClueDocumentationProvider"/>
+        <colorSettingsPage implementation="com.donseba.goclue.GoClueColorSettingsPage"/>
+        <additionalTextAttributes scheme="Default" file="colorSchemes/GoClueDefault.xml"/>
+        <additionalTextAttributes scheme="Darcula" file="colorSchemes/GoClueDarcula.xml"/>
         <postStartupActivity implementation="com.donseba.goclue.GoClueStartupActivity"/>
     </extensions>
 
