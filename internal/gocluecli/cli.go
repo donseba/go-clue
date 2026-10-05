@@ -53,6 +53,9 @@ type (
 		Doc     string                 `json:"doc,omitempty"`
 		Fields  map[string]fieldIndex  `json:"fields"`
 		Methods map[string]methodIndex `json:"methods,omitempty"`
+		// Interface marks interface types, which accept any type with
+		// their methods.
+		Interface bool `json:"interface,omitempty"`
 	}
 
 	fieldIndex struct {
@@ -71,6 +74,9 @@ type (
 		Line      int      `json:"line,omitempty"`
 		Column    int      `json:"column,omitempty"`
 		Params    []string `json:"params,omitempty"`
+		// Qualified is the signature with full package paths and without
+		// parameter names, to compare methods declared in different packages.
+		Qualified string `json:"qualified,omitempty"`
 	}
 
 	goFuncIndex struct {
@@ -1158,6 +1164,7 @@ func indexPackageTypeDecl(root string, fileSet *token.FileSet, pkg *packages.Pac
 			indexed.Fields = exportedTypedFields(root, fileSet, pkg, idx, structType, typeSpec)
 		} else if iface := namedInterface(obj.Type()); iface != nil {
 			indexed.Fields = map[string]fieldIndex{}
+			indexed.Interface = true
 			addMethodSet(root, fileSet, idx, pkg.Types, indexed.Methods, types.NewMethodSet(obj.Type()), nil)
 		} else {
 			continue
@@ -1198,6 +1205,7 @@ func indexPackageFuncDecl(root string, fileSet *token.FileSet, pkg *packages.Pac
 		typ.Methods[obj.Name()] = methodIndex{
 			Type:      templateValueResultType(results),
 			Signature: types.TypeString(sig, typeQualifier(pkg.Types)),
+			Qualified: qualifiedSignature(sig),
 			Doc:       stripGoClueSignatureDocs(methodDoc),
 			File:      rel(root, position.Filename),
 			Line:      position.Line,
@@ -1647,10 +1655,11 @@ func indexReachableNamedType(root string, fileSet *token.FileSet, idx *indexFile
 	typ, ok := idx.Types[key]
 	if !ok {
 		typ = goTypeIndex{
-			Name:    obj.Name(),
-			Package: obj.Pkg().Path(),
-			Fields:  exportedExternalFields(root, fileSet, idx, current, named, seen),
-			Methods: make(map[string]methodIndex),
+			Name:      obj.Name(),
+			Package:   obj.Pkg().Path(),
+			Fields:    exportedExternalFields(root, fileSet, idx, current, named, seen),
+			Methods:   make(map[string]methodIndex),
+			Interface: types.IsInterface(named),
 		}
 		if typ.Fields == nil {
 			typ.Fields = make(map[string]fieldIndex)
@@ -1709,6 +1718,7 @@ func addMethodSet(root string, fileSet *token.FileSet, idx *indexFile, current *
 			Type:      templateValueResultType(results),
 			Signature: types.TypeString(sig, typeQualifier(current)),
 			Params:    signatureParams(sig, current),
+			Qualified: qualifiedSignature(sig),
 		}
 		if position := fileSet.Position(method.Pos()); position.IsValid() && position.Filename != "" {
 			indexed.File = rel(root, position.Filename)
@@ -1772,6 +1782,19 @@ func signatureResults(sig *types.Signature, current *types.Package) []string {
 
 func typeString(typ types.Type, current *types.Package) string {
 	return types.TypeString(types.Unalias(typ), typeQualifier(current))
+}
+
+// qualifiedSignature is sig with full package paths and without parameter
+// names or receiver, so equal method signatures read the same in every package.
+func qualifiedSignature(sig *types.Signature) string {
+	unnamed := func(tuple *types.Tuple) *types.Tuple {
+		vars := make([]*types.Var, tuple.Len())
+		for i := range vars {
+			vars[i] = types.NewParam(token.NoPos, nil, "", tuple.At(i).Type())
+		}
+		return types.NewTuple(vars...)
+	}
+	return types.TypeString(types.NewSignatureType(nil, nil, nil, unnamed(sig.Params()), unnamed(sig.Results()), sig.Variadic()), nil)
 }
 
 func typeQualifier(current *types.Package) types.Qualifier {

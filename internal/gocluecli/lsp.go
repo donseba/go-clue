@@ -2365,7 +2365,27 @@ func argumentAssignable(idx lspIndex, expected, actual string) bool {
 	if resolvedActual == "" {
 		resolvedActual = actual
 	}
-	return resolvedExpected == resolvedActual
+	return resolvedExpected == resolvedActual || implementsInterface(idx, resolvedExpected, resolvedActual)
+}
+
+// implementsInterface reports whether actual has every method of the
+// interface expected with the same signature. Both types must be indexed.
+func implementsInterface(idx lspIndex, expected, actual string) bool {
+	iface, ok := idx.Types[expected]
+	if !ok || !iface.Interface {
+		return false
+	}
+	typ, ok := idx.Types[actual]
+	if !ok {
+		return false
+	}
+	for name, want := range iface.Methods {
+		have, ok := typ.Methods[name]
+		if !ok || want.Qualified == "" || have.Qualified != want.Qualified {
+			return false
+		}
+	}
+	return true
 }
 
 func normalizeComparableType(value string) string {
