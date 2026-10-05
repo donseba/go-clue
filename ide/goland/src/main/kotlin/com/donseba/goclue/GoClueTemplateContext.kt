@@ -518,6 +518,16 @@ object GoClueTemplateContext {
                         ),
                     )
                 }
+                // if keeps the dot, but needs a scope so its {{end}} does not
+                // close an enclosing range or with.
+                "if" -> stack.add(parent)
+                "define" -> stack.add(ScopeInfo(dotType = contract.dot.ifBlank { null }, vars = emptyMap()))
+                "block" -> stack.add(ScopeInfo(dotType = blockDotType(expression, index, contract, parent.dotType), vars = emptyMap()))
+                "else" -> {
+                    if (stack.size > 1) {
+                        stack[stack.lastIndex] = elseScope(expression, index, contract, stack[stack.lastIndex - 1], parent)
+                    }
+                }
                 "end" -> {
                     if (stack.size > 1) stack.removeAt(stack.lastIndex)
                 }
@@ -525,6 +535,31 @@ object GoClueTemplateContext {
         }
 
         return stack.last()
+    }
+
+    // elseScope is the scope of an else branch: the else of a range or with
+    // sees the outer dot again, and "else with" moves the dot to its value.
+    private fun elseScope(
+        expression: String,
+        index: GoClueIndex,
+        contract: TemplateContract,
+        outer: ScopeInfo,
+        current: ScopeInfo,
+    ): ScopeInfo {
+        val withExpression = elseWithPattern.matchEntire(expression)?.groupValues?.get(1)
+            ?: return ScopeInfo(dotType = outer.dotType, vars = current.vars)
+        return ScopeInfo(
+            dotType = index.resolveExpressionType(contract, sourceExpression(withExpression), outer.dotType),
+            vars = current.vars,
+        )
+    }
+
+    // blockDotType is the dot inside {{block "name" pipeline}}: the value of
+    // the pipeline, or none when the block has no pipeline.
+    private fun blockDotType(expression: String, index: GoClueIndex, contract: TemplateContract, dotType: String?): String? {
+        val pipeline = expression.trim().replaceFirst(quotedNamePattern, "").trim()
+        if (pipeline.isEmpty()) return null
+        return index.resolveExpressionType(contract, pipeline, dotType)
     }
 
     private fun sourceExpression(expression: String): String {
@@ -642,7 +677,9 @@ object GoClueTemplateContext {
         return typedRootDeclarationPattern.findAll(before).map { it.groupValues[2] }.toSet()
     }
 
-    private val actionPattern = Regex("""\{\{\s*(?:-)?\s*(range|with|end)\b([^}]*)\}\}""")
+    private val actionPattern = Regex("""\{\{\s*(?:-)?\s*(range|with|if|define|block|else|end)\b([^}]*)\}\}""")
+    private val elseWithPattern = Regex("""\s*with\b(.*)""", RegexOption.DOT_MATCHES_ALL)
+    private val quotedNamePattern = Regex("""^"[^"]*"""")
     private val templateActionPattern = Regex("""\{\{\s*(?:-)?\s*[^}]*\}\}""")
     private val templateIncludePattern = Regex("""^\{\{\s*(?:-)?\s*(?:template|block)\s+"([^"]+)"(?:\s+[^}]*)?\s*-?\}\}$""")
     private val dotContractPattern = Regex("""(?m)^\s*@dot\s+([A-Za-z0-9_./\-]+)""")
