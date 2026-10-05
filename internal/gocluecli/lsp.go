@@ -308,6 +308,7 @@ var (
 	lspAssignmentPattern           = regexp.MustCompile(`^\s*(\$[A-Za-z][A-Za-z0-9_]*)\s*:=\s*(.+?)\s*$`)
 	lspActionPattern               = regexp.MustCompile(`\{\{[^}]*\}\}`)
 	lspAccessorPattern             = regexp.MustCompile(`(?:[$_A-Za-z][$_A-Za-z0-9]*(?:\.[A-Za-z][A-Za-z0-9_]*)+|\.[A-Za-z][A-Za-z0-9_]*(?:\.[A-Za-z][A-Za-z0-9_]*)*)`)
+	lspVariablePattern             = regexp.MustCompile(`\$[A-Za-z_][A-Za-z0-9_]*`)
 	lspTemplateCallRegexp          = regexp.MustCompile(`^\s*(?:template|block)\s+"([^"]+)"(?:\s+(.+?))?\s*-?\s*$`)
 	lspDefineActionRegexp          = regexp.MustCompile(`^\s*define\s+"([^"]+)"\s*$`)
 	lspLeadingDefineContractRegexp = regexp.MustCompile(`(?s)(\{\{/\*.*?@(model|dot|func|gen|symbol).*?\*/\}\})([ \t\r\n]*)(\{\{\s*(?:-)?\s*define\s+"([^"]+)"\s*(?:-)?\s*\}\})`)
@@ -3441,6 +3442,13 @@ func semanticTokensForTextScoped(text string, idx lspIndex, contract templateInd
 			continue
 		}
 		actionContract := activeContractAt(text, idx, relative, contract, action[0])
+		// Template variables, also where they are declared or used without a
+		// field, such as {{$team := moduleURL "team"}} and {{if $team}}.
+		for _, match := range lspVariablePattern.FindAllStringIndex(actionText, -1) {
+			if !inQuotedString(actionText, match[0]) {
+				tokens = append(tokens, semanticToken{start: action[0] + match[0], length: match[1] - match[0], tokenType: semanticVariable})
+			}
+		}
 		for _, token := range templateFunctionTokensInAction(actionText, idx, actionContract) {
 			item := semanticToken{start: action[0] + token.start, length: token.end - token.start, tokenType: semanticFunction}
 			if _, ok := builtInTemplateFuncs[token.name]; ok && actionContract.Funcs[token.name] == "" {

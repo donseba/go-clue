@@ -3217,7 +3217,8 @@ func TestLSPSemanticTokensDistinguishSymbolKinds(t *testing.T) {
 		Roots: map[string]string{"Page": "example.com/app.Page"},
 		Funcs: map[string]string{"upper": "example.com/app.Upper"},
 	}
-	text := `{{ range $item := Page.Items }}{{ upper $item.Name }}{{ end }}{{ Page.Summary }}{{ len Page.Title }}`
+	text := `{{ range $item := Page.Items }}{{ upper $item.Name }}{{ end }}{{ Page.Summary }}{{ len Page.Title }}
+{{ $count := len Page.Items }}{{ if $count }}{{ printf "%d $notAVariable" $count }}{{ end }}`
 
 	tokens := semanticTokensForText(text, idx, contract)
 	for _, want := range []struct {
@@ -3232,6 +3233,7 @@ func TestLSPSemanticTokensDistinguishSymbolKinds(t *testing.T) {
 		{"Summary", semanticMethod, 0},
 		{"upper", semanticFunction, 0},
 		{"len", semanticFunction, semanticDefaultLibrary},
+		{"$count", semanticVariable, 0},
 	} {
 		found := false
 		for _, token := range tokens {
@@ -3242,5 +3244,11 @@ func TestLSPSemanticTokensDistinguishSymbolKinds(t *testing.T) {
 		if !found {
 			t.Fatalf("tokens = %#v, want %q as type %d with modifiers %d", tokens, want.value, want.tokenType, want.modifiers)
 		}
+	}
+	if got := semanticTokenCount(text, tokens, "$count", semanticVariable); got != 3 {
+		t.Fatalf("$count variable tokens = %d, want its declaration and both uses", got)
+	}
+	if hasSemanticToken(text, tokens, "$notAVariable", semanticVariable) {
+		t.Fatalf("tokens = %#v, want no variable token inside a string", tokens)
 	}
 }
