@@ -29,7 +29,7 @@ class RebuildIndexAction : AnAction() {
         val outFile = File(outDir, "index.json")
         outDir.mkdirs()
 
-        val result = GoClueIndexer.run(root, outFile)
+        val result = GoClueIndexer.buildIndex(root, outFile)
         if (result.exitCode != 0) {
             if (result.missingGoClue) {
                 GoClueCliInstaller.offerInstallAndIndex(project, root, outFile, ".go-clue/index.json updated")

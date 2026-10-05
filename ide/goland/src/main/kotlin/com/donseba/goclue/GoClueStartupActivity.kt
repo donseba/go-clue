@@ -28,8 +28,7 @@ class GoClueStartupActivity : ProjectActivity {
                     indicator.text = "Running go-clue index in ${root.name}"
                     val outFile = GoClueIndexer.indexTarget(project, root)
                     if (GoClueIndexer.autoIndexEnabled(project, root) && outFile.isFile) continue
-                    outFile.parentFile.mkdirs()
-                    val result = GoClueIndexer.run(root, outFile)
+                    val result = GoClueIndexer.buildIndex(root, outFile)
                     if (result.exitCode != 0) {
                         if (result.missingGoClue) {
                             GoClueCliInstaller.offerInstallAndIndex(project, root, outFile, indexMessage(root, outFile))
