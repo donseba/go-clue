@@ -1401,6 +1401,93 @@ func Asset(path string) string {
 	}
 }
 
+func TestBuildIndexUsesFunctionMapReturnedThroughVariable(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, "go.mod", "module example.com/app\n\ngo 1.26\n")
+	source := `package app
+
+import "html/template"
+
+type Form struct{}
+
+//go-clue:funcmap
+func (f *Form) FuncMap() template.FuncMap {
+	funcMap := template.FuncMap{
+		"form_render": f.render,
+	}
+
+	return funcMap
+}
+
+func (f *Form) render(model any) string {
+	return ""
+}
+`
+	writeFile(t, root, "funcs.go", source)
+	writeFile(t, root, "templates/page.gohtml", `{{ form_render . }}`)
+
+	idx, err := buildIndex(root)
+	if err != nil {
+		t.Fatalf("buildIndex() error = %v", err)
+	}
+	if len(idx.Problems) != 0 {
+		t.Fatalf("unexpected problems: %#v", idx.Problems)
+	}
+	target := idx.Templates["templates/page.gohtml"].Funcs["form_render"]
+	if target != "example.com/app.render" {
+		t.Fatalf("funcmap form_render = %q", target)
+	}
+	if fn := idx.Funcs[target]; fn.File != "funcs.go" || fn.Line != lineOf(source, "func (f *Form) render(") {
+		t.Fatalf("form_render declaration = %s:%d, want the render method", fn.File, fn.Line)
+	}
+}
+
+func TestBuildIndexReportsFunctionMapVariableChangedAfterItsLiteral(t *testing.T) {
+	bodies := map[string]string{
+		"reassigned": `funcs := template.FuncMap{
+		"asset": Asset,
+	}
+	if admin {
+		funcs = template.FuncMap{}
+	}
+	return funcs`,
+		"entry added": `funcs := template.FuncMap{}
+	funcs["asset"] = Asset
+	return funcs`,
+	}
+	for name, body := range bodies {
+		t.Run(name, func(t *testing.T) {
+			root := t.TempDir()
+			writeFile(t, root, "go.mod", "module example.com/app\n\ngo 1.26\n")
+			writeFile(t, root, "funcs.go", `package app
+
+import "html/template"
+
+//go-clue:funcmap
+func TemplateFuncs(admin bool) template.FuncMap {
+	`+body+`
+}
+
+func Asset(path string) string {
+	return path
+}
+`)
+			writeFile(t, root, "templates/page.gohtml", `{{ asset "app.css" }}`)
+
+			idx, err := buildIndex(root)
+			if err != nil {
+				t.Fatalf("buildIndex() error = %v", err)
+			}
+			if got := idx.Templates["templates/page.gohtml"].Funcs["asset"]; got != "" {
+				t.Fatalf("funcmap asset = %q, want none from a changed variable", got)
+			}
+			if len(idx.Problems) != 1 || idx.Problems[0].Message != funcMapDynamicMessage {
+				t.Fatalf("problems = %#v, want the dynamic funcmap problem", idx.Problems)
+			}
+		})
+	}
+}
+
 func TestBuildIndexFunctionMapDuplicateDiagnostic(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, "go.mod", "module example.com/app\n\ngo 1.26\n")

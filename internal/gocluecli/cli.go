@@ -978,12 +978,49 @@ func directFuncMapReturnLiteral(decl *ast.FuncDecl) *ast.CompositeLit {
 		if !ok || len(ret.Results) != 1 {
 			continue
 		}
-		lit, ok := ret.Results[0].(*ast.CompositeLit)
-		if ok {
-			return lit
+		switch result := ret.Results[0].(type) {
+		case *ast.CompositeLit:
+			return result
+		case *ast.Ident:
+			return funcMapVariableLiteral(decl.Body, result.Name)
 		}
 	}
 	return nil
+}
+
+// funcMapVariableLiteral returns the literal a function body assigns to the
+// variable it returns, as in m := template.FuncMap{...}; return m. Any other
+// use of the variable, such as adding entries with m["name"] = fn, keeps the
+// funcmap dynamic.
+func funcMapVariableLiteral(body *ast.BlockStmt, name string) *ast.CompositeLit {
+	var lit *ast.CompositeLit
+	uses := 0
+	ast.Inspect(body, func(node ast.Node) bool {
+		switch node := node.(type) {
+		case *ast.Ident:
+			if node.Name == name {
+				uses++
+			}
+		case *ast.AssignStmt:
+			if len(node.Lhs) == 1 && len(node.Rhs) == 1 && isIdentNamed(node.Lhs[0], name) {
+				lit, _ = node.Rhs[0].(*ast.CompositeLit)
+			}
+		case *ast.ValueSpec:
+			if len(node.Names) == 1 && len(node.Values) == 1 && node.Names[0].Name == name {
+				lit, _ = node.Values[0].(*ast.CompositeLit)
+			}
+		}
+		return true
+	})
+	if uses != 2 {
+		return nil
+	}
+	return lit
+}
+
+func isIdentNamed(expr ast.Expr, name string) bool {
+	ident, ok := expr.(*ast.Ident)
+	return ok && ident.Name == name
 }
 
 func hasFuncMapAnnotation(group *ast.CommentGroup) bool {
