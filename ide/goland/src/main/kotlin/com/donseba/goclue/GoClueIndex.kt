@@ -112,7 +112,7 @@ class GoClueIndex(
             }
                 ?: root?.let { shadowIndexFile(it, checked) }
                 ?: run {
-                    if (root != null) GoClueIndexer.requestShadowIndex(project, root)
+                    if (root != null) GoClueIndexer.requestIndex(project, root)
                     return empty(checkedPaths = checked)
                 }
 

@@ -13,7 +13,8 @@ import java.util.concurrent.TimeUnit
 
 object GoClueIndexer {
     private val runtime = GoClueRuntime()
-    private val pendingShadowBuilds = ConcurrentHashMap.newKeySet<String>()
+    private val pendingBuilds = ConcurrentHashMap.newKeySet<String>()
+    private val dependencySources = ConcurrentHashMap<String, Boolean>()
 
     @Volatile
     private var cachedGoRoot: String? = null
@@ -32,6 +33,16 @@ object GoClueIndexer {
 
     fun findModuleRoot(filePath: String?): File? {
         return runtime.findModuleRoot(filePath)
+    }
+
+    // projectModuleRoots are the modules of the project's own content roots.
+    // Modules of other open files are indexed on demand when one of their
+    // templates is used.
+    fun projectModuleRoots(project: Project): List<File> {
+        val paths = goClueReadAction {
+            ProjectRootManager.getInstance(project).contentRoots.map { it.path } + listOfNotNull(project.basePath)
+        }
+        return paths.mapNotNull(::findModuleRoot).distinctBy { it.canonicalPath }
     }
 
     fun moduleRoots(project: Project): List<File> {
@@ -100,7 +111,13 @@ object GoClueIndexer {
 
     fun enabled(project: Project, root: File): Boolean {
         if (!GoClueSettings.getInstance(project).state.enabled) return false
+        if (isDependencySource(root)) return false
         return projectConfigEnabled(root)
+    }
+
+    // isDependencySource is asked on every hover, so the answer is kept per root.
+    private fun isDependencySource(root: File): Boolean {
+        return dependencySources.computeIfAbsent(root.path) { runtime.isDependencySource(root) }
     }
 
     fun autoIndexEnabled(project: Project, root: File): Boolean {
@@ -125,11 +142,15 @@ object GoClueIndexer {
         return File(File(base, digest), "index.json")
     }
 
-    fun requestShadowIndex(project: Project, root: File) {
-        if (!enabled(project, root) || autoIndexEnabled(project, root)) return
-        val outFile = shadowIndexFile(root)
+    // requestIndex builds the index of a module in the background. A shadow
+    // index is rebuilt on every request; .go-clue/index.json is only built when
+    // it is missing, because the startup build and the watcher keep it current.
+    fun requestIndex(project: Project, root: File) {
+        if (!enabled(project, root)) return
+        val outFile = indexTarget(project, root)
+        if (autoIndexEnabled(project, root) && outFile.isFile) return
         val key = outFile.canonicalPath
-        if (!pendingShadowBuilds.add(key)) return
+        if (!pendingBuilds.add(key)) return
 
         ApplicationManager.getApplication().executeOnPooledThread {
             try {
@@ -142,7 +163,7 @@ object GoClueIndexer {
                     }
                 }
             } finally {
-                pendingShadowBuilds.remove(key)
+                pendingBuilds.remove(key)
             }
         }
     }

@@ -13,33 +13,43 @@ class GoClueStartupActivity : ProjectActivity {
     override suspend fun execute(project: Project) {
         GoClueIndexWatcher.install(project)
 
-        GoClueIndexer.moduleRoots(project).forEach { root -> startIndex(project, root) }
+        // Only the project's own modules are indexed up front. Other modules,
+        // such as the module of a dependency opened in an editor tab, are
+        // indexed on demand when one of their templates is used.
+        val roots = GoClueIndexer.projectModuleRoots(project).filter { GoClueIndexer.enabled(project, it) }
+        if (roots.isNotEmpty()) startIndex(project, roots)
     }
 
-    private fun startIndex(project: Project, root: File) {
-        if (!GoClueIndexer.enabled(project, root)) return
-
+    private fun startIndex(project: Project, roots: List<File>) {
         object : Task.Backgroundable(project, "Building go-clue index", false) {
             override fun run(indicator: ProgressIndicator) {
-                indicator.text = "Running go-clue index"
-                val outFile = GoClueIndexer.indexTarget(project, root)
-                if (GoClueIndexer.autoIndexEnabled(project, root) && outFile.isFile) return
-                outFile.parentFile.mkdirs()
-                val result = GoClueIndexer.run(root, outFile)
-                if (result.exitCode != 0) {
-                    if (result.missingGoClue) {
-                        GoClueCliInstaller.offerInstallAndIndex(project, root, outFile, indexMessage(root, outFile))
-                        return
+                val built = mutableListOf<String>()
+                for (root in roots) {
+                    indicator.text = "Running go-clue index in ${root.name}"
+                    val outFile = GoClueIndexer.indexTarget(project, root)
+                    if (GoClueIndexer.autoIndexEnabled(project, root) && outFile.isFile) continue
+                    outFile.parentFile.mkdirs()
+                    val result = GoClueIndexer.run(root, outFile)
+                    if (result.exitCode != 0) {
+                        if (result.missingGoClue) {
+                            GoClueCliInstaller.offerInstallAndIndex(project, root, outFile, indexMessage(root, outFile))
+                            return
+                        }
+                        notify(project, "go-clue index not built", result.stderr.ifBlank { result.stdout }, NotificationType.WARNING)
+                        continue
                     }
-                    notify(project, "go-clue index not built", result.stderr.ifBlank { result.stdout }, NotificationType.WARNING)
-                    return
+                    if (outFile.isFile) {
+                        val message = indexMessage(root, outFile)
+                        built.add(if (roots.size == 1) message else "${root.name}: $message")
+                    }
                 }
+                if (built.isEmpty()) return
+
+                // One notification for the whole startup build.
                 ApplicationManager.getApplication().invokeLater {
                     GoClueIndex.refreshVirtualIndex(project)
                     GoClueEditorRefresh.refresh(project)
-                    if (outFile.isFile) {
-                        notify(project, "go-clue index built", indexMessage(root, outFile), NotificationType.INFORMATION)
-                    }
+                    notify(project, "go-clue index built", built.joinToString("\n"), NotificationType.INFORMATION)
                 }
             }
         }.queue()

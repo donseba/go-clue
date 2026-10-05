@@ -27,7 +27,7 @@ internal class GoClueLspServerSupportProvider : LspServerSupportProvider {
         if (!GoClueIndexer.enabled(project, root)) return
         val virtualRoot = goClueReadAction { LocalFileSystem.getInstance().findFileByPath(root.path) } ?: return
         serverStarter.ensureServerStarted(GoClueLspServerDescriptor(project, virtualRoot))
-        GoClueIndexer.requestShadowIndex(project, root)
+        GoClueIndexer.requestIndex(project, root)
     }
 }
 
