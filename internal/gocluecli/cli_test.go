@@ -1017,6 +1017,181 @@ func addRequestFuncs(funcs template.FuncMap) {
 	}
 }
 
+func TestBuildIndexReadsGoClueSignatureFromFuncMapEntry(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, "go.mod", "module example.com/app\n\ngo 1.26\n")
+	source := `package app
+
+import (
+	"context"
+	"html/template"
+)
+
+//go-clue:funcmap
+func TemplateFuncs() template.FuncMap {
+	return template.FuncMap{
+		//go-clue:sig func(file string) string
+		"asset": asset,
+		"plain": Plain, //go-clue:sig func() int
+		"upper": Upper,
+		// greet says hello.
+		//go-clue:sig func(name string) string
+		"greet": func(ctx context.Context, name string) string {
+			return "hello " + name
+		},
+	}
+}
+
+// asset is the URL of a theme file.
+func asset(ctx context.Context, file string) string {
+	return "/theme/" + file
+}
+
+func Plain() string {
+	return ""
+}
+
+func Upper(v string) string {
+	return v
+}
+`
+	writeFile(t, root, "funcs.go", source)
+	text := `{{ asset "site.css" }} {{ greet "you" }} {{ upper "x" }} {{ plain }}`
+	writeFile(t, root, "templates/page.gohtml", text)
+
+	idx, err := buildIndex(root)
+	if err != nil {
+		t.Fatalf("buildIndex() error = %v", err)
+	}
+	if len(idx.Problems) != 0 {
+		t.Fatalf("unexpected problems: %#v", idx.Problems)
+	}
+	tmpl := idx.Templates["templates/page.gohtml"]
+	asset := idx.Funcs[tmpl.Funcs["asset"]]
+	if asset.File != "funcs.go" || asset.Line != lineOf(source, "func asset(") {
+		t.Fatalf("asset declaration = %s:%d, want the asset function", asset.File, asset.Line)
+	}
+	if len(asset.Signatures) != 1 || asset.Signature != "func(file string) string" || len(asset.Params) != 1 || asset.Result != "string" {
+		t.Fatalf("asset signature = %#v, want the entry's signature", asset)
+	}
+	if asset.Doc != "asset is the URL of a theme file." {
+		t.Fatalf("asset doc = %q", asset.Doc)
+	}
+	greet := idx.Funcs[tmpl.Funcs["greet"]]
+	if greet.File != "funcs.go" || greet.Line != lineOf(source, `"greet":`) || greet.Doc != "greet says hello." {
+		t.Fatalf("greet = %#v, want the closure entry with its comment", greet)
+	}
+	for name, want := range map[string]string{"plain": "example.com/app.Plain", "upper": "example.com/app.Upper"} {
+		if got := tmpl.Funcs[name]; got != want || len(idx.Funcs[got].Signatures) != 0 {
+			t.Fatalf("%s = %q %#v, want %s without a trailing comment's signature", name, got, idx.Funcs[got].Signatures, want)
+		}
+	}
+
+	lsp := lspIndex{indexFile: idx}
+	if diagnostics := diagnosticsForText(text, lsp, tmpl); len(diagnostics) != 0 {
+		t.Fatalf("diagnostics = %#v, want calls matching the declared signatures", diagnostics)
+	}
+	invalid := diagnosticsForText(`{{ asset 1 }}`, lsp, tmpl)
+	assertDiagnostic(t, invalid, "Cannot pass int to asset argument 1 because it expects string")
+
+	uri := uriFromPath(filepath.Join(root, "templates", "page.gohtml"))
+	server := &lspServer{root: root, idx: idx, docs: map[string]string{uri: text}}
+	definitionResult := server.definition(textDocumentPositionParams{
+		TextDocument: textDocumentIdentifier{URI: uri},
+		Position:     positionAt(text, strings.Index(text, "asset")+1),
+	})
+	gotDefinition, ok := definitionResult.(location)
+	if !ok || !strings.HasSuffix(filepath.ToSlash(gotDefinition.URI), "/funcs.go") || gotDefinition.Range.Start.Line != lineOf(source, "func asset(")-1 {
+		t.Fatalf("definition(asset) = %#v, want the asset function", definitionResult)
+	}
+}
+
+func TestBuildIndexIgnoresFuncMapEntrySignatureWhenSignatureDiscoveryIsDisabled(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, "go.mod", "module example.com/app\n\ngo 1.26\n")
+	writeFile(t, root, ".go-clue/config.json", `{
+  "discover": {
+    "signatures": false
+  }
+}`)
+	writeFile(t, root, "funcs.go", `package app
+
+import "html/template"
+
+//go-clue:funcmap
+func TemplateFuncs() template.FuncMap {
+	return template.FuncMap{
+		//go-clue:sig func() int
+		"asset": Asset,
+	}
+}
+
+func Asset(file string) string {
+	return file
+}
+`)
+	writeFile(t, root, "templates/page.gohtml", `{{ asset "site.css" }}`)
+
+	idx, err := buildIndex(root)
+	if err != nil {
+		t.Fatalf("buildIndex() error = %v", err)
+	}
+	tmpl := idx.Templates["templates/page.gohtml"]
+	if got := tmpl.Funcs["asset"]; got != "example.com/app.Asset" || len(idx.Funcs[got].Signatures) != 0 {
+		t.Fatalf("asset = %q %#v, want the Go function without the entry's signature", got, idx.Funcs[got])
+	}
+}
+
+func TestBuildIndexReadsFuncMapEntrySignatureFromConfiguredProviderFunctionMap(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, "go.mod", "module example.com/app\n\ngo 1.26\n")
+	writeFile(t, root, ".go-clue/config.json", `{
+  "exclude": ["framework"],
+  "providers": [
+    "example.com/app/framework"
+  ],
+  "functionMaps": [
+    "example.com/app/framework.funcs"
+  ]
+}`)
+	source := `package framework
+
+import (
+	"context"
+	"html/template"
+)
+
+func funcs() template.FuncMap {
+	return template.FuncMap{
+		//go-clue:sig func(key string) []string
+		"banners": active,
+	}
+}
+
+// active returns the active banners of an instance.
+func active(ctx context.Context, key string) []string {
+	return nil
+}
+`
+	writeFile(t, root, "framework/funcs.go", source)
+	writeFile(t, root, "templates/page.gohtml", `{{ range banners "hero" }}{{ . }}{{ end }}`)
+
+	idx, err := buildIndex(root)
+	if err != nil {
+		t.Fatalf("buildIndex() error = %v", err)
+	}
+	if len(idx.Problems) != 0 {
+		t.Fatalf("unexpected problems: %#v", idx.Problems)
+	}
+	banners := idx.Funcs[idx.Templates["templates/page.gohtml"].Funcs["banners"]]
+	if banners.File != "framework/funcs.go" || banners.Line != lineOf(source, "func active(") || banners.Package != "example.com/app/framework" {
+		t.Fatalf("banners declaration = %#v, want the provider's active function", banners)
+	}
+	if banners.Signature != "func(key string) []string" || banners.Doc != "active returns the active banners of an instance." {
+		t.Fatalf("banners = %#v, want the entry's signature and the function's doc", banners)
+	}
+}
+
 func TestBuildIndexUsesConfiguredProviderPackage(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, "go.mod", "module example.com/app\n\ngo 1.26\n")
@@ -1492,4 +1667,8 @@ func hasProblem(problems []problem, message string) bool {
 		}
 	}
 	return false
+}
+
+func lineOf(text, needle string) int {
+	return strings.Count(text[:strings.Index(text, needle)], "\n") + 1
 }

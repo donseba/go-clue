@@ -621,7 +621,7 @@ func discoverAnnotatedFuncMaps(root string, fileSet *token.FileSet, pkg *package
 				if !hasFuncMapAnnotation(decl.Doc) {
 					continue
 				}
-				extractFuncMapFromFuncDecl(root, fileSet, pkg, idx, funcs, decl, functionSourceAnnotatedFuncMap)
+				extractFuncMapFromFuncDecl(root, fileSet, pkg, file, cfg, idx, funcs, decl, functionSourceAnnotatedFuncMap)
 			case *ast.GenDecl:
 				declAnnotated := hasFuncMapAnnotation(decl.Doc)
 				if declAnnotated && decl.Tok != token.VAR {
@@ -640,7 +640,7 @@ func discoverAnnotatedFuncMaps(root string, fileSet *token.FileSet, pkg *package
 					if !ok || (!declAnnotated && !hasFuncMapAnnotation(valueSpec.Doc)) {
 						continue
 					}
-					extractFuncMapFromValueSpec(root, fileSet, pkg, idx, funcs, valueSpec, functionSourceAnnotatedFuncMap, "")
+					extractFuncMapFromValueSpec(root, fileSet, pkg, file, cfg, idx, funcs, valueSpec, functionSourceAnnotatedFuncMap, "")
 				}
 			}
 		}
@@ -683,12 +683,7 @@ func indexAnnotatedTemplateFunctionSignature(root string, fileSet *token.FileSet
 	fn.File = rel(root, pos.Filename)
 	fn.Line = pos.Line
 	fn.Column = pos.Column
-	fn.Signatures = signatures
-	fn.Signature = signatures[0].Signature
-	fn.Params = signatures[0].Params
-	fn.Result = signatures[0].Result
-	fn.Results = signatures[0].Results
-	fn.ReturnOK = len(fn.Results) > 0 || fn.Result != ""
+	setTemplateSignatures(&fn, signatures)
 	idx.Funcs[target] = fn
 	funcs.add(templateFunctionSource{
 		Name:     name,
@@ -755,7 +750,7 @@ func extractConfiguredFuncMaps(root string, fileSet *token.FileSet, pkg *package
 						continue
 					}
 					found = true
-					extractFuncMapFromFuncDecl(root, fileSet, pkg, idx, funcs, decl, functionSourceConfigFuncMap)
+					extractFuncMapFromFuncDecl(root, fileSet, pkg, file, cfg, idx, funcs, decl, functionSourceConfigFuncMap)
 				case *ast.GenDecl:
 					if decl.Tok != token.VAR {
 						continue
@@ -766,7 +761,7 @@ func extractConfiguredFuncMaps(root string, fileSet *token.FileSet, pkg *package
 							continue
 						}
 						found = true
-						extractFuncMapFromValueSpec(root, fileSet, pkg, idx, funcs, valueSpec, functionSourceConfigFuncMap, symbol)
+						extractFuncMapFromValueSpec(root, fileSet, pkg, file, cfg, idx, funcs, valueSpec, functionSourceConfigFuncMap, symbol)
 					}
 				}
 			}
@@ -787,7 +782,7 @@ func reportMissingConfiguredFuncMaps(cfg indexConfig, funcs *templateFunctionReg
 	}
 }
 
-func extractFuncMapFromFuncDecl(root string, fileSet *token.FileSet, pkg *packages.Package, idx *indexFile, funcs *templateFunctionRegistry, decl *ast.FuncDecl, priority int) {
+func extractFuncMapFromFuncDecl(root string, fileSet *token.FileSet, pkg *packages.Package, file *ast.File, cfg indexConfig, idx *indexFile, funcs *templateFunctionRegistry, decl *ast.FuncDecl, priority int) {
 	obj, _ := pkg.TypesInfo.Defs[decl.Name].(*types.Func)
 	funcMapName := qualifiedObjectName(obj)
 	if funcMapName == "" && pkg.Types != nil {
@@ -809,11 +804,11 @@ func extractFuncMapFromFuncDecl(root string, fileSet *token.FileSet, pkg *packag
 		})
 		return
 	}
-	extractFuncMapLiteral(root, fileSet, pkg, idx, funcs, funcMapName, lit, priority)
+	extractFuncMapLiteral(root, fileSet, pkg, file, cfg, idx, funcs, funcMapName, lit, priority)
 	funcs.seenFuncMaps[funcMapName] = true
 }
 
-func extractFuncMapFromValueSpec(root string, fileSet *token.FileSet, pkg *packages.Package, idx *indexFile, funcs *templateFunctionRegistry, spec *ast.ValueSpec, priority int, onlyName string) {
+func extractFuncMapFromValueSpec(root string, fileSet *token.FileSet, pkg *packages.Package, file *ast.File, cfg indexConfig, idx *indexFile, funcs *templateFunctionRegistry, spec *ast.ValueSpec, priority int, onlyName string) {
 	for i, name := range spec.Names {
 		if onlyName != "" && name.Name != onlyName {
 			continue
@@ -845,13 +840,16 @@ func extractFuncMapFromValueSpec(root string, fileSet *token.FileSet, pkg *packa
 			})
 			continue
 		}
-		extractFuncMapLiteral(root, fileSet, pkg, idx, funcs, funcMapName, lit, priority)
+		extractFuncMapLiteral(root, fileSet, pkg, file, cfg, idx, funcs, funcMapName, lit, priority)
 		funcs.seenFuncMaps[funcMapName] = true
 	}
 }
 
-func extractFuncMapLiteral(root string, fileSet *token.FileSet, pkg *packages.Package, idx *indexFile, funcs *templateFunctionRegistry, funcMapName string, lit *ast.CompositeLit, priority int) {
+func extractFuncMapLiteral(root string, fileSet *token.FileSet, pkg *packages.Package, file *ast.File, cfg indexConfig, idx *indexFile, funcs *templateFunctionRegistry, funcMapName string, lit *ast.CompositeLit, priority int) {
+	previous := lit.Lbrace
 	for _, elt := range lit.Elts {
+		after := previous
+		previous = elt.End()
 		kv, ok := elt.(*ast.KeyValueExpr)
 		if !ok {
 			continue
@@ -866,6 +864,13 @@ func extractFuncMapLiteral(root string, fileSet *token.FileSet, pkg *packages.Pa
 			continue
 		}
 		targetObj := functionObjectForExpr(pkg.TypesInfo, kv.Value)
+		if cfg.discoverSignatures() {
+			comment := funcMapEntryComment(fileSet, file, after, kv.Pos())
+			if signatures := parseGoClueSignatures(rawCommentText(comment)); len(signatures) > 0 {
+				indexFuncMapEntrySignature(root, fileSet, pkg, idx, funcs, funcMapName, kv, key, targetObj, comment, signatures, priority)
+				continue
+			}
+		}
 		target := qualifiedObjectName(targetObj)
 		if target == "" {
 			continue
@@ -880,6 +885,88 @@ func extractFuncMapLiteral(root string, fileSet *token.FileSet, pkg *packages.Pa
 			Priority: priority,
 		})
 	}
+}
+
+// funcMapEntryComment returns the comment group on the lines directly above a
+// funcmap literal entry. after is the end of the previous entry or the opening
+// brace, so a comment trailing the previous entry does not belong to this one.
+func funcMapEntryComment(fileSet *token.FileSet, file *ast.File, after, entry token.Pos) *ast.CommentGroup {
+	afterLine := fileSet.Position(after).Line
+	entryLine := fileSet.Position(entry).Line
+	for _, group := range file.Comments {
+		if group.Pos() >= entry {
+			break
+		}
+		if group.Pos() <= after || fileSet.Position(group.Pos()).Line <= afterLine {
+			continue
+		}
+		if fileSet.Position(group.End()).Line+1 == entryLine {
+			return group
+		}
+	}
+	return nil
+}
+
+// indexFuncMapEntrySignature indexes a funcmap entry whose template signature
+// is declared by //go-clue:sig comments above it, for helpers that templates
+// call differently from their Go signature. The definition is the Go function
+// the entry refers to, or the entry itself for a closure. The Go function's own
+// index entry keeps its Go signature.
+func indexFuncMapEntrySignature(root string, fileSet *token.FileSet, pkg *packages.Package, idx *indexFile, funcs *templateFunctionRegistry, funcMapName string, kv *ast.KeyValueExpr, name string, targetObj types.Object, comment *ast.CommentGroup, signatures []goFuncSignatureIndex, priority int) {
+	target := virtualPackageTemplateFunctionPath(funcMapName, name)
+	pos := fileSet.Position(kv.Pos())
+	fn := goFuncIndex{
+		Name:    name,
+		Package: pkg.PkgPath,
+		File:    rel(root, pos.Filename),
+		Line:    pos.Line,
+		Column:  pos.Column,
+		Doc:     stripGoClueSignatureDocs(docText(comment)),
+	}
+	if declared, ok := targetObj.(*types.Func); ok && declared.Pkg() != nil {
+		if position := fileSet.Position(declared.Pos()); position.IsValid() && position.Filename != "" {
+			fn.Package = declared.Pkg().Path()
+			fn.File = rel(root, position.Filename)
+			fn.Line = position.Line
+			fn.Column = position.Column
+		}
+		if fn.Doc == "" {
+			fn.Doc = stripGoClueSignatureDocs(docText(funcDeclDoc(pkg, declared)))
+		}
+	}
+	setTemplateSignatures(&fn, signatures)
+	idx.Funcs[target] = fn
+	funcs.add(templateFunctionSource{
+		Name:     name,
+		Target:   target,
+		FuncMap:  funcMapName,
+		File:     rel(root, pos.Filename),
+		Priority: priority,
+	})
+}
+
+// funcDeclDoc returns the doc comment of fn when pkg declares it.
+func funcDeclDoc(pkg *packages.Package, fn *types.Func) *ast.CommentGroup {
+	for _, file := range pkg.Syntax {
+		for _, decl := range file.Decls {
+			decl, ok := decl.(*ast.FuncDecl)
+			if ok && pkg.TypesInfo.Defs[decl.Name] == fn {
+				return decl.Doc
+			}
+		}
+	}
+	return nil
+}
+
+// setTemplateSignatures makes the first of signatures the function's template
+// signature and keeps all of them as accepted call forms.
+func setTemplateSignatures(fn *goFuncIndex, signatures []goFuncSignatureIndex) {
+	fn.Signatures = signatures
+	fn.Signature = signatures[0].Signature
+	fn.Params = signatures[0].Params
+	fn.Result = signatures[0].Result
+	fn.Results = signatures[0].Results
+	fn.ReturnOK = len(fn.Results) > 0 || fn.Result != ""
 }
 
 func directFuncMapReturnLiteral(decl *ast.FuncDecl) *ast.CompositeLit {
