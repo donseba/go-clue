@@ -274,6 +274,30 @@ funcs["url"] = func() *url.URL {
 }
 ```
 
+An entry of a FuncMap literal can carry `//go-clue:sig` the same way. This fits
+helpers that templates call differently from their Go signature, such as
+functions whose `context.Context` the application fills in at render time.
+Go-to-definition opens the function the entry refers to, and hover shows its
+doc comment; for a closure, both use the entry itself:
+
+```go
+//go-clue:funcmap
+func TemplateFuncs() template.FuncMap {
+    return template.FuncMap{
+        //go-clue:sig func(file string) string
+        "asset": asset,
+    }
+}
+
+// asset is the URL of a file in the theme's assets folder.
+func asset(ctx context.Context, file string) string {
+    return themeURL(ctx, file)
+}
+```
+
+The comment must be on the lines directly above the entry; a comment trailing
+the previous entry does not count.
+
 Any non-special annotation with a name and type becomes a typed root: a named
 value that go-clue can complete, validate, hover, and navigate. `@model` is the
 recommended convention for page or fragment data. `@symbol`, `@component`,
@@ -430,8 +454,9 @@ Small projects can also declare providers in included Go files:
 `discover.signatures` controls `//go-clue:sig` scanning. Both default to `true`.
 `templateFunctions` is the richer form for
 helpers that need multiple signatures or use `//go-clue:sig` comments as their
-source of truth. `//go-clue:sig` can annotate a named Go function or a closure
-assignment such as `funcs["url"] = func(...) { ... }`.
+source of truth. `//go-clue:sig` can annotate a named Go function, a closure
+assignment such as `funcs["url"] = func(...) { ... }`, or an entry of a FuncMap
+literal.
 `symbolAnnotations` describes custom annotation names that produce typed roots.
 Use this for framework concepts such as `@interaction`, `@component`,
 or any project-specific template value that should be completed and navigated
