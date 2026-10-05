@@ -8,6 +8,7 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.vfs.LocalFileSystem
 import java.io.File
 import java.nio.charset.StandardCharsets
+import java.util.concurrent.ConcurrentHashMap
 
 data class GoClueType(
     val fqName: String,
@@ -80,6 +81,19 @@ class GoClueIndex(
     val checkedPaths: List<String> = emptyList(),
     val loadError: String? = null,
 ) {
+    private fun withCheckedPaths(checkedPaths: List<String>): GoClueIndex = GoClueIndex(
+        types = types,
+        funcs = funcs,
+        templates = templates,
+        short = short,
+        symbolAliases = symbolAliases,
+        symbolStrictMode = symbolStrictMode,
+        source = source,
+        rootPath = rootPath,
+        checkedPaths = checkedPaths,
+        loadError = loadError,
+    )
+
     companion object {
         fun load(project: Project): GoClueIndex {
             return load(project, null)
@@ -103,13 +117,38 @@ class GoClueIndex(
                 }
 
             return try {
-                parse(readIndexText(indexFile), indexFile.path, root?.path ?: indexFile.parentFile.parentFile.path, checked)
+                parseCached(indexFile, root?.path ?: indexFile.parentFile.parentFile.path, checked)
             } catch (err: Throwable) {
                 empty(
                     checkedPaths = checked,
                     loadError = "${err.javaClass.simpleName}: ${err.message ?: "failed to load index"}",
                 )
             }
+        }
+
+        // parsed keeps the last parse of every index file until the file
+        // changes. Ctrl+hover asks for the index on each mouse move, and an
+        // index can be megabytes of JSON.
+        private val parsed = ConcurrentHashMap<String, ParsedIndex>()
+
+        private class ParsedIndex(
+            val modified: Long,
+            val size: Long,
+            val rootPath: String,
+            val index: GoClueIndex,
+        )
+
+        private fun parseCached(indexFile: File, rootPath: String, checkedPaths: List<String>): GoClueIndex {
+            val modified = indexFile.lastModified()
+            val size = indexFile.length()
+            val cached = parsed[indexFile.path]
+            if (cached != null && cached.modified == modified && cached.size == size && cached.rootPath == rootPath) {
+                return cached.index.withCheckedPaths(checkedPaths)
+            }
+
+            val index = parse(readIndexText(indexFile), indexFile.path, rootPath, checkedPaths)
+            parsed[indexFile.path] = ParsedIndex(modified, size, rootPath, index)
+            return index
         }
 
         private fun empty(

@@ -13,6 +13,7 @@
         <notificationGroup id="go-clue" displayType="BALLOON"/>
         <platform.lsp.serverSupportProvider implementation="com.donseba.goclue.GoClueLspServerSupportProvider"/>
         <psi.referenceContributor implementation="com.donseba.goclue.GoClueReferenceContributor"/>
+        <gotoDeclarationHandler implementation="com.donseba.goclue.GoClueGotoDeclarationHandler"/>
         <documentationProvider implementation="com.donseba.goclue.GoClueDocumentationProvider"/>
         <postStartupActivity implementation="com.donseba.goclue.GoClueStartupActivity"/>
     </extensions>
