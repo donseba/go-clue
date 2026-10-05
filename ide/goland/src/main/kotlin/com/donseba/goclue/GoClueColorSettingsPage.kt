@@ -20,12 +20,13 @@ internal class GoClueColorSettingsPage : ColorSettingsPage {
     override fun getDemoText(): String = """
         {{/* @dot example.com/app.<type>View</type> */}}
         {{/* @gen <namespace>money</namespace> example.com/app/moneyfuncs */}}
-        <title>{{ <function>upper</function> <root>.</root><field>Title</field> }} · {{ <root>.</root><struct>Site</struct>.<field>Name</field> }}</title>
-        {{ range <variable>${'$'}item</variable> := <root>.</root><field>Items</field> }}
+        <title>{{ <function>upper</function> <field>.Title</field> }} · {{ <struct>.Site</struct>.<field>Name</field> }}</title>
+        {{ range <variable>${'$'}item</variable> := <field>.Items</field> }}
             <p>{{ <variable>${'$'}item</variable>.<field>Name</field> }}: {{ <namespace>money</namespace>.<method>EUR</method> <variable>${'$'}item</variable>.<field>Cents</field> }}</p>
         {{ end }}
-        {{ with <root>.</root><struct>Event</struct> }}<time>{{ <root>.</root><struct>Start</struct>.<method>Format</method> "2 Jan" }}</time>{{ end }}
-        {{ if <builtin>eq</builtin> (<builtin>len</builtin> <root>.</root><field>Items</field>) 0 }}{{ <root>.</root><method>Summary</method> }}{{ end }}
+        {{ with <struct>.Event</struct> }}<time>{{ <struct>.Start</struct>.<method>Format</method> "2 Jan" }}</time>{{ end }}
+        {{ if <builtin>eq</builtin> (<builtin>len</builtin> <field>.Items</field>) 0 }}{{ <method>.Summary</method> }}{{ end }}
+        {{ range <field>.Tags</field> }}<span>{{ <root>.</root> }}</span>{{ end }}
 
         {{/* @model <root>Page</root> example.com/app.<type>Page</type> */}}
         <h1>{{ <root>Page</root>.<field>Title</field> }}</h1>
