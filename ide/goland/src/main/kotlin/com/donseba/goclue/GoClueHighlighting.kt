@@ -12,6 +12,7 @@ internal object GoClueHighlighting {
     val BUILTIN_FUNCTION = createTextAttributesKey("GO_CLUE_BUILTIN_FUNCTION", DefaultLanguageHighlighterColors.PREDEFINED_SYMBOL)
     val METHOD = createTextAttributesKey("GO_CLUE_METHOD", DefaultLanguageHighlighterColors.INSTANCE_METHOD)
     val FIELD = createTextAttributesKey("GO_CLUE_FIELD", DefaultLanguageHighlighterColors.INSTANCE_FIELD)
+    val STRUCT_FIELD = createTextAttributesKey("GO_CLUE_STRUCT_FIELD", DefaultLanguageHighlighterColors.INSTANCE_FIELD)
     val VARIABLE = createTextAttributesKey("GO_CLUE_VARIABLE", DefaultLanguageHighlighterColors.LOCAL_VARIABLE)
     val ROOT = createTextAttributesKey("GO_CLUE_ROOT", DefaultLanguageHighlighterColors.PARAMETER)
     val TYPE = createTextAttributesKey("GO_CLUE_TYPE", DefaultLanguageHighlighterColors.CLASS_NAME)
@@ -20,13 +21,13 @@ internal object GoClueHighlighting {
     // tokenTypes and tokenModifiers are the semantic token kinds the language
     // server reports.
     val tokenTypes = listOf("variable", "property", "type", "function", "method", "parameter", "namespace")
-    val tokenModifiers = listOf("defaultLibrary")
+    val tokenModifiers = listOf("defaultLibrary", "struct")
 
     fun keyFor(tokenType: String, modifiers: List<String>): TextAttributesKey? {
         return when (tokenType) {
             "function" -> if ("defaultLibrary" in modifiers) BUILTIN_FUNCTION else FUNCTION
             "method" -> METHOD
-            "property" -> FIELD
+            "property" -> if ("struct" in modifiers) STRUCT_FIELD else FIELD
             "variable" -> VARIABLE
             "parameter" -> ROOT
             "type" -> TYPE

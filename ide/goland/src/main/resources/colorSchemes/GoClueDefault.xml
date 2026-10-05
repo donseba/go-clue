@@ -42,4 +42,9 @@
       <option name="FONT_TYPE" value="2"/>
     </value>
   </option>
+  <option name="GO_CLUE_STRUCT_FIELD">
+    <value>
+      <option name="FOREGROUND" value="0E7C86"/>
+    </value>
+  </option>
 </list>

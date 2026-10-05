@@ -18,13 +18,17 @@ internal class GoClueColorSettingsPage : ColorSettingsPage {
     override fun getHighlighter(): SyntaxHighlighter = PlainSyntaxHighlighter()
 
     override fun getDemoText(): String = """
-        {{/* @model <root>Page</root> example.com/app.<type>Page</type> */}}
+        {{/* @dot example.com/app.<type>View</type> */}}
         {{/* @gen <namespace>money</namespace> example.com/app/moneyfuncs */}}
-        <h1>{{ <function>upper</function> <root>Page</root>.<field>Title</field> }}</h1>
-        {{ range <variable>${'$'}item</variable> := <root>Page</root>.<field>Items</field> }}
+        <title>{{ <function>upper</function> <root>.</root><field>Title</field> }} · {{ <root>.</root><struct>Site</struct>.<field>Name</field> }}</title>
+        {{ range <variable>${'$'}item</variable> := <root>.</root><field>Items</field> }}
             <p>{{ <variable>${'$'}item</variable>.<field>Name</field> }}: {{ <namespace>money</namespace>.<method>EUR</method> <variable>${'$'}item</variable>.<field>Cents</field> }}</p>
         {{ end }}
-        {{ if <builtin>eq</builtin> (<builtin>len</builtin> <root>Page</root>.<field>Items</field>) 0 }}{{ <root>Page</root>.<method>Summary</method> }}{{ end }}
+        {{ with <root>.</root><struct>Event</struct> }}<time>{{ <root>.</root><struct>Start</struct>.<method>Format</method> "2 Jan" }}</time>{{ end }}
+        {{ if <builtin>eq</builtin> (<builtin>len</builtin> <root>.</root><field>Items</field>) 0 }}{{ <root>.</root><method>Summary</method> }}{{ end }}
+
+        {{/* @model <root>Page</root> example.com/app.<type>Page</type> */}}
+        <h1>{{ <root>Page</root>.<field>Title</field> }}</h1>
     """.trimIndent()
 
     override fun getAdditionalHighlightingTagToDescriptorMap(): Map<String, TextAttributesKey> = mapOf(
@@ -32,6 +36,7 @@ internal class GoClueColorSettingsPage : ColorSettingsPage {
         "builtin" to GoClueHighlighting.BUILTIN_FUNCTION,
         "method" to GoClueHighlighting.METHOD,
         "field" to GoClueHighlighting.FIELD,
+        "struct" to GoClueHighlighting.STRUCT_FIELD,
         "variable" to GoClueHighlighting.VARIABLE,
         "root" to GoClueHighlighting.ROOT,
         "type" to GoClueHighlighting.TYPE,
@@ -43,8 +48,9 @@ internal class GoClueColorSettingsPage : ColorSettingsPage {
         AttributesDescriptor("Built-in function (eq, len, printf, …)", GoClueHighlighting.BUILTIN_FUNCTION),
         AttributesDescriptor("Method", GoClueHighlighting.METHOD),
         AttributesDescriptor("Field", GoClueHighlighting.FIELD),
+        AttributesDescriptor("Field holding a struct (.Site in .Site.Name)", GoClueHighlighting.STRUCT_FIELD),
         AttributesDescriptor("Variable (\$item)", GoClueHighlighting.VARIABLE),
-        AttributesDescriptor("Typed root (@model, @symbol, …)", GoClueHighlighting.ROOT),
+        AttributesDescriptor("Template data (the dot, \$, @model roots)", GoClueHighlighting.ROOT),
         AttributesDescriptor("Type", GoClueHighlighting.TYPE),
         AttributesDescriptor("Generated namespace (@gen)", GoClueHighlighting.NAMESPACE),
     )
