@@ -1259,6 +1259,9 @@ func Greet(loc b.Localizer) string {
 	if !idx.Types["example.com/app/b.Localizer"].Interface || idx.Types["example.com/app.Visitor"].Interface {
 		t.Fatalf("interface flags: b.Localizer %v, Visitor %v", idx.Types["example.com/app/b.Localizer"].Interface, idx.Types["example.com/app.Visitor"].Interface)
 	}
+	if idx.Types["example.com/app/b.Localizer"].Struct || !idx.Types["example.com/app.Visitor"].Struct {
+		t.Fatalf("struct flags: b.Localizer %v, Visitor %v", idx.Types["example.com/app/b.Localizer"].Struct, idx.Types["example.com/app.Visitor"].Struct)
+	}
 	lsp := lspIndex{indexFile: idx}
 	contract := idx.Templates["templates/page.gohtml"]
 	header := `{{/* @dot example.com/app.Page */}}`

@@ -262,13 +262,19 @@ const (
 	semanticNamespace
 )
 
-// semanticDefaultLibrary marks the built-in template functions, such as eq
-// and len.
-const semanticDefaultLibrary = 1 << 0
+// Semantic token modifiers, as bits in the order of semanticTokenModifiers.
+const (
+	// semanticDefaultLibrary marks the built-in template functions, such as
+	// eq and len.
+	semanticDefaultLibrary = 1 << iota
+	// semanticStruct marks fields that hold a struct, such as .Site in
+	// .Site.Name, as opposed to values and collections.
+	semanticStruct
+)
 
 var (
 	semanticTokenTypes     = []string{"variable", "property", "type", "function", "method", "parameter", "namespace"}
-	semanticTokenModifiers = []string{"defaultLibrary"}
+	semanticTokenModifiers = []string{"defaultLibrary", "struct"}
 )
 
 const (
@@ -3442,6 +3448,11 @@ func semanticTokensForTextScoped(text string, idx lspIndex, contract templateInd
 			continue
 		}
 		actionContract := activeContractAt(text, idx, relative, contract, action[0])
+		// The dot and $ are the data the template or block works on, colored
+		// like a typed root: in @dot templates they play its part.
+		for _, offset := range rootOperandOffsets(actionText) {
+			tokens = append(tokens, semanticToken{start: action[0] + offset, length: 1, tokenType: semanticParameter})
+		}
 		// Template variables, also where they are declared or used without a
 		// field, such as {{$team := moduleURL "team"}} and {{if $team}}.
 		for _, match := range lspVariablePattern.FindAllStringIndex(actionText, -1) {
@@ -3466,13 +3477,17 @@ func semanticTokensForTextScoped(text string, idx lspIndex, contract templateInd
 			root := tokenRoot(token)
 			if _, _, ok := actionContract.typedRootType(root); ok {
 				tokens = append(tokens, semanticToken{start: start, length: len(root), tokenType: semanticParameter})
-			} else if strings.HasPrefix(root, "$") {
+			} else if strings.HasPrefix(root, "$") && root != "$" {
 				tokens = append(tokens, semanticToken{start: start, length: len(root), tokenType: semanticVariable})
 			}
 			for _, ref := range fieldReferencesForToken(text, start, end, idx, actionContract) {
 				owner := idx.Types[ref.ownerType]
 				if _, ok := owner.Fields[ref.fieldName]; ok {
-					tokens = append(tokens, semanticToken{start: ref.start, length: ref.end - ref.start, tokenType: semanticField})
+					item := semanticToken{start: ref.start, length: ref.end - ref.start, tokenType: semanticField}
+					if holdsStruct(idx, owner, ref.fieldName) {
+						item.modifiers = semanticStruct
+					}
+					tokens = append(tokens, item)
 				} else if _, ok := owner.Methods[ref.fieldName]; ok {
 					tokens = append(tokens, semanticToken{start: ref.start, length: ref.end - ref.start, tokenType: semanticMethod})
 				}
@@ -3486,6 +3501,58 @@ func semanticTokensForTextScoped(text string, idx lspIndex, contract templateInd
 		return tokens[i].start < tokens[j].start
 	})
 	return compactSemanticTokens(tokens)
+}
+
+// rootOperandOffsets returns where an action refers to the data it works on:
+// a dot that starts a field chain or stands alone, as in .Title and {{.}},
+// and a $ that is not part of a variable name, as in $.Site. Dots between
+// fields, after a parenthesis and in numbers are not roots.
+func rootOperandOffsets(actionText string) []int {
+	start := strings.Index(actionText, "{{")
+	end := strings.LastIndex(actionText, "}}")
+	if start < 0 || end < start {
+		return nil
+	}
+	var offsets []int
+	for index := start + len("{{"); index < end; index++ {
+		ch := actionText[index]
+		if ch != '.' && ch != '$' {
+			continue
+		}
+		next := actionText[index+1]
+		if ch == '$' {
+			if !isIdentifierByte(next) && !inQuotedString(actionText, index) {
+				offsets = append(offsets, index)
+			}
+			continue
+		}
+		previous := actionText[index-1]
+		if isIdentifierByte(previous) || previous == ')' || previous == '$' || (next >= '0' && next <= '9') {
+			continue
+		}
+		if !inQuotedString(actionText, index) {
+			offsets = append(offsets, index)
+		}
+	}
+	return offsets
+}
+
+func isIdentifierByte(ch byte) bool {
+	return ch == '_' || ch >= 'a' && ch <= 'z' || ch >= 'A' && ch <= 'Z' || ch >= '0' && ch <= '9'
+}
+
+// holdsStruct reports whether the field name of owner holds a struct, also
+// behind a pointer, rather than a basic value, an interface or a collection.
+func holdsStruct(idx lspIndex, owner goTypeIndex, name string) bool {
+	field, ok := owner.Fields[name]
+	if !ok {
+		return false
+	}
+	typeExpr := stripPointer(strings.TrimSpace(qualifyMemberType(idx, owner, field.Type)))
+	if strings.HasPrefix(typeExpr, "[") || strings.HasPrefix(typeExpr, "map[") {
+		return false
+	}
+	return idx.Types[resolveGoType(idx, typeExpr)].Struct
 }
 
 func shortTypeName(typeName string) string {

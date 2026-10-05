@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"testing"
@@ -3250,5 +3251,65 @@ func TestLSPSemanticTokensDistinguishSymbolKinds(t *testing.T) {
 	}
 	if hasSemanticToken(text, tokens, "$notAVariable", semanticVariable) {
 		t.Fatalf("tokens = %#v, want no variable token inside a string", tokens)
+	}
+}
+
+func TestLSPSemanticTokensMarkRootsAndStructFields(t *testing.T) {
+	idx := lspIndex{indexFile: indexFile{
+		Types: map[string]goTypeIndex{
+			"example.com/app.View": {
+				Name:    "View",
+				Package: "example.com/app",
+				Struct:  true,
+				Fields: map[string]fieldIndex{
+					"Title":  {Type: "string"},
+					"Site":   {Type: "*Site"},
+					"Menu":   {Type: "[]Site"},
+					"Values": {Type: "map[string]string"},
+				},
+			},
+			"example.com/app.Site": {
+				Name:    "Site",
+				Package: "example.com/app",
+				Struct:  true,
+				Fields:  map[string]fieldIndex{"Name": {Type: "string"}},
+			},
+		},
+		Short: map[string][]string{"View": {"example.com/app.View"}, "Site": {"example.com/app.Site"}},
+	}}
+	contract := templateIndex{Dot: "example.com/app.View"}
+	text := "{{/* @dot example.com/app.View */}}\n" +
+		`{{ .Title }} {{ .Site.Name }} {{ range .Menu }}{{ . }}{{ end }} {{ $ }}{{ .Values }} {{ printf "%.2f" 1.5 }} {{ template "x.gohtml" . }}`
+
+	tokens := semanticTokensForText(text, idx, contract)
+	var roots []int
+	for _, token := range tokens {
+		if token.tokenType == semanticParameter {
+			roots = append(roots, token.start)
+		}
+	}
+	want := []int{
+		strings.Index(text, ".Title"),
+		strings.Index(text, ".Site"),
+		strings.Index(text, ".Menu"),
+		strings.Index(text, "{{ . }}") + len("{{ "),
+		strings.Index(text, "{{ $ }}") + len("{{ "),
+		strings.Index(text, ".Values"),
+		strings.LastIndex(text, "."),
+	}
+	if !slices.Equal(roots, want) {
+		t.Fatalf("root tokens at %v, want %v: the dots that start a chain or stand alone, and $", roots, want)
+	}
+
+	for name, modifiers := range map[string]int{"Site": semanticStruct, "Title": 0, "Name": 0, "Menu": 0, "Values": 0} {
+		found := false
+		for _, token := range tokens {
+			if text[token.start:token.start+token.length] == name && token.tokenType == semanticField {
+				found = token.modifiers == modifiers
+			}
+		}
+		if !found {
+			t.Fatalf("tokens = %#v, want field %s with modifiers %d", tokens, name, modifiers)
+		}
 	}
 }
