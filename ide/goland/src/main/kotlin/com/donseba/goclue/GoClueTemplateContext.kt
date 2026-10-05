@@ -98,7 +98,7 @@ object GoClueTemplateContext {
                     endOffset = range.last + 1,
                 ),
             )
-            val memberType = index.membersForType(ownerType)[name] ?: return references
+            val memberType = index.memberType(ownerType, name) ?: return references
             ownerType = index.resolveGoType(memberType) ?: memberType
         }
         return references

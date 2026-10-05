@@ -37,15 +37,64 @@ class GoClueTemplateContextTest {
         assertEquals(view, ownerAt(text, text.lastIndexOf(".Title") + 1))
     }
 
+    @Test
+    fun `same-package field types resolve when another package shares their name`() {
+        val documents = "example.com/app/documents"
+        val listView = "$documents.ListView"
+        val category = "$documents.Category"
+        val shared = GoClueIndex(
+            types = mapOf(
+                listView to type(listView, "ListView", "AllURL" to "string", "Category" to "*Category", "Categories" to "[]Category", pkg = documents),
+                category to type(
+                    category,
+                    "Category",
+                    "Name" to "string",
+                    "URL" to "string",
+                    "Count" to "int",
+                    "Active" to "bool",
+                    pkg = documents,
+                ),
+                "example.com/app/directory.Category" to type("example.com/app/directory.Category", "Category", pkg = "example.com/app/directory"),
+                "example.com/app/publishing.Category" to type("example.com/app/publishing.Category", "Category", pkg = "example.com/app/publishing"),
+            ),
+            funcs = emptyMap(),
+            templates = emptyMap(),
+            short = mapOf(
+                "ListView" to listOf(listView),
+                "Category" to listOf(category, "example.com/app/directory.Category", "example.com/app/publishing.Category"),
+            ),
+        )
+        val list = TemplateContract(roots = emptyMap(), dot = listView)
+        val text = """{{if .Categories}}
+            <a href="{{.AllURL}}" {{if not .Category}}aria-current="true"{{end}}>All</a>
+            {{range .Categories}}
+                <a href="{{.URL}}" {{if .Active}}aria-current="true"{{end}}>{{.Name}} ({{.Count}})</a>
+            {{end}}
+        {{end}}"""
+
+        for (field in listOf(".URL", ".Active", ".Name", ".Count")) {
+            val owner = GoClueTemplateContext.fieldReferenceAt(text, text.indexOf(field) + 1, shared, list)?.ownerTypeName
+            assertEquals(category, owner, field)
+        }
+
+        val pointer = GoClueTemplateContext.fieldReferenceAt("{{.Category.Name}}", 12, shared, list)?.ownerTypeName
+        assertEquals(category, pointer)
+    }
+
     private fun ownerAt(text: String, offset: Int): String? {
         return GoClueTemplateContext.fieldReferenceAt(text, offset, index, contract)?.ownerTypeName
     }
 
-    private fun type(fqName: String, name: String, vararg fields: Pair<String, String>): GoClueType {
+    private fun type(
+        fqName: String,
+        name: String,
+        vararg fields: Pair<String, String>,
+        pkg: String = "example.com/app",
+    ): GoClueType {
         return GoClueType(
             fqName = fqName,
             name = name,
-            pkg = "example.com/app",
+            pkg = pkg,
             file = "app.go",
             line = 1,
             column = 1,

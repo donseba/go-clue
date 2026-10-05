@@ -412,12 +412,6 @@ class GoClueIndex(
         return types[typeName]?.fields.orEmpty()
     }
 
-    fun membersForType(typeName: String?): Map<String, String> {
-        val type = types[typeName] ?: return emptyMap()
-        return type.fields.mapValues { (_, field) -> field.type } +
-            type.methods.mapValues { (_, method) -> method.type }
-    }
-
     fun resolveExpressionType(contract: TemplateContract, expression: String, dotType: String? = null): String? {
         val valueType = resolveExpressionValueType(contract, expression, dotType) ?: return null
         return resolveGoType(valueType)
@@ -515,12 +509,32 @@ class GoClueIndex(
     fun resolveFieldValuePath(rootType: String, fields: List<String>): String? {
         var current: String? = rootType
         for ((index, field) in fields.withIndex()) {
-            val typ = types[current] ?: return null
-            val memberType = typ.fields[field]?.type ?: typ.methods[field]?.type ?: return null
+            val memberType = memberType(current, field) ?: return null
             if (index == fields.lastIndex) return memberType
             current = resolveGoType(memberType)
         }
         return current
+    }
+
+    // memberType is the type of a field or method of ownerType, qualified when
+    // it is declared in the owner's own package.
+    fun memberType(ownerType: String?, name: String): String? {
+        val owner = types[ownerType] ?: return null
+        val memberType = owner.fields[name]?.type ?: owner.methods[name]?.type ?: return null
+        return qualifyMemberType(owner, memberType)
+    }
+
+    // qualifyMemberType qualifies a member type declared in the owner's own
+    // package. The index stores those unqualified ("Site", "[]Category",
+    // "*Page"), which is ambiguous as soon as another package declares a type
+    // with the same name.
+    private fun qualifyMemberType(owner: GoClueType, typeExpr: String): String {
+        val trimmed = typeExpr.trim()
+        val base = normalizeGoType(trimmed)
+        if (owner.pkg.isBlank() || base.isBlank() || base.any { it in ".[]{}" }) return trimmed
+        val qualified = "${owner.pkg}.$base"
+        if (!types.containsKey(qualified)) return trimmed
+        return trimmed.removeSuffix(base) + qualified
     }
 
     fun resolveGoType(typeExpr: String): String? {
