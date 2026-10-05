@@ -3448,7 +3448,7 @@ func semanticTokensForTextScoped(text string, idx lspIndex, contract templateInd
 			continue
 		}
 		actionContract := activeContractAt(text, idx, relative, contract, action[0])
-		// The dot and $ are the data the template or block works on, colored
+		// A lone dot and $ are the data the template or block works on, colored
 		// like a typed root: in @dot templates they play its part.
 		for _, offset := range rootOperandOffsets(actionText) {
 			tokens = append(tokens, semanticToken{start: action[0] + offset, length: 1, tokenType: semanticParameter})
@@ -3482,14 +3482,20 @@ func semanticTokensForTextScoped(text string, idx lspIndex, contract templateInd
 			}
 			for _, ref := range fieldReferencesForToken(text, start, end, idx, actionContract) {
 				owner := idx.Types[ref.ownerType]
+				tokenStart := ref.start
+				// The dot that starts a chain belongs to its first word:
+				// .Title is one token, like Title in Page.Title.
+				if startsAtRootDot(text, ref.start) {
+					tokenStart--
+				}
 				if _, ok := owner.Fields[ref.fieldName]; ok {
-					item := semanticToken{start: ref.start, length: ref.end - ref.start, tokenType: semanticField}
+					item := semanticToken{start: tokenStart, length: ref.end - tokenStart, tokenType: semanticField}
 					if holdsStruct(idx, owner, ref.fieldName) {
 						item.modifiers = semanticStruct
 					}
 					tokens = append(tokens, item)
 				} else if _, ok := owner.Methods[ref.fieldName]; ok {
-					tokens = append(tokens, semanticToken{start: ref.start, length: ref.end - ref.start, tokenType: semanticMethod})
+					tokens = append(tokens, semanticToken{start: tokenStart, length: ref.end - tokenStart, tokenType: semanticMethod})
 				}
 			}
 		}
@@ -3503,10 +3509,11 @@ func semanticTokensForTextScoped(text string, idx lspIndex, contract templateInd
 	return compactSemanticTokens(tokens)
 }
 
-// rootOperandOffsets returns where an action refers to the data it works on:
-// a dot that starts a field chain or stands alone, as in .Title and {{.}},
-// and a $ that is not part of a variable name, as in $.Site. Dots between
-// fields, after a parenthesis and in numbers are not roots.
+// rootOperandOffsets returns where an action refers to the data it works on
+// itself: a dot that stands alone, as in {{.}}, and a $ that is not part of a
+// variable name, as in $.Site. A dot that starts a field chain belongs to the
+// field (see startsAtRootDot); dots between fields, after a parenthesis and in
+// numbers are not roots.
 func rootOperandOffsets(actionText string) []int {
 	start := strings.Index(actionText, "{{")
 	end := strings.LastIndex(actionText, "}}")
@@ -3527,7 +3534,7 @@ func rootOperandOffsets(actionText string) []int {
 			continue
 		}
 		previous := actionText[index-1]
-		if isIdentifierByte(previous) || previous == ')' || previous == '$' || (next >= '0' && next <= '9') {
+		if isIdentifierByte(previous) || previous == ')' || previous == '$' || isIdentifierByte(next) {
 			continue
 		}
 		if !inQuotedString(actionText, index) {
@@ -3535,6 +3542,20 @@ func rootOperandOffsets(actionText string) []int {
 		}
 	}
 	return offsets
+}
+
+// startsAtRootDot reports whether the name at offset follows a dot that starts
+// a field chain on the dot, as in .Title, rather than a dot between fields or
+// after $, a variable or a parenthesis.
+func startsAtRootDot(text string, offset int) bool {
+	if offset < 1 || text[offset-1] != '.' {
+		return false
+	}
+	if offset < 2 {
+		return true
+	}
+	previous := text[offset-2]
+	return !isIdentifierByte(previous) && previous != ')' && previous != '$' && previous != ']'
 }
 
 func isIdentifierByte(ch byte) bool {

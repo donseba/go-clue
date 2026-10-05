@@ -705,12 +705,12 @@ func TestLSPUsesDefineContractInsideSameFileSections(t *testing.T) {
 	tokens := semanticTokensForTextScoped(text, idx, topContract, "templates/single_file.gohtml")
 	foundName := false
 	for _, token := range tokens {
-		if token.tokenType == semanticField && text[token.start:token.start+token.length] == "Name" {
+		if token.tokenType == semanticField && text[token.start:token.start+token.length] == ".Name" {
 			foundName = true
 		}
 	}
 	if !foundName {
-		t.Fatalf("tokens = %#v, want field token for define dot field", tokens)
+		t.Fatalf("tokens = %#v, want field token for define dot field, with its dot", tokens)
 	}
 }
 
@@ -1759,7 +1759,7 @@ func TestLSPHighlightsFunctionResultSelectorChains(t *testing.T) {
 			t.Fatalf("tokens = %#v, want semantic method token for %s", tokens, name)
 		}
 	}
-	if got := semanticTokenCount(text, tokens, "Path", semanticField); got != 2 {
+	if got := semanticTokenCount(text, tokens, "Path", semanticField) + semanticTokenCount(text, tokens, ".Path", semanticField); got != 2 {
 		t.Fatalf("Path semantic token count = %d, want 2 in %#v", got, tokens)
 	}
 
@@ -3289,19 +3289,17 @@ func TestLSPSemanticTokensMarkRootsAndStructFields(t *testing.T) {
 		}
 	}
 	want := []int{
-		strings.Index(text, ".Title"),
-		strings.Index(text, ".Site"),
-		strings.Index(text, ".Menu"),
 		strings.Index(text, "{{ . }}") + len("{{ "),
 		strings.Index(text, "{{ $ }}") + len("{{ "),
-		strings.Index(text, ".Values"),
 		strings.LastIndex(text, "."),
 	}
 	if !slices.Equal(roots, want) {
-		t.Fatalf("root tokens at %v, want %v: the dots that start a chain or stand alone, and $", roots, want)
+		t.Fatalf("root tokens at %v, want %v: the dots that stand alone, and $", roots, want)
 	}
 
-	for name, modifiers := range map[string]int{"Site": semanticStruct, "Title": 0, "Name": 0, "Menu": 0, "Values": 0} {
+	// The dot that starts a chain is part of the first field; the dot between
+	// fields is not.
+	for name, modifiers := range map[string]int{".Site": semanticStruct, ".Title": 0, "Name": 0, ".Menu": 0, ".Values": 0} {
 		found := false
 		for _, token := range tokens {
 			if text[token.start:token.start+token.length] == name && token.tokenType == semanticField {
