@@ -1912,13 +1912,81 @@ func methodArgumentDiagnosticForAction(text string, actionStart int, actionText 
 		if !ok {
 			continue
 		}
+		args, ok := methodArguments(actionText, match[0], match[1], close)
+		if !ok {
+			continue
+		}
 		fn := goFuncIndex{Name: ref.fieldName, Params: method.Params, Result: method.Type, ReturnOK: true}
-		args := templateArgsInRange(actionText, match[1], close)
 		if item, ok := functionArgumentDiagnostic(text, actionStart, ref.fieldName, match[1], fn, args, idx, contract, dotType); ok {
 			return item, true
 		}
 	}
 	return diagnostic{}, false
+}
+
+// methodArguments returns the arguments of the method named by the operand at
+// actionText[start:end], as templates pass them: a method that starts a command
+// gets the operands after it up to the end of that command, any other method is
+// called without arguments. After a pipe it also gets the piped value, which is
+// not in the text, so it is not checked.
+func methodArguments(actionText string, start, end, close int) ([]templateArg, bool) {
+	before := strings.TrimRight(actionText[:start], " \t\r\n")
+	switch {
+	case strings.HasSuffix(before, "|"):
+		return nil, false
+	case strings.HasSuffix(before, "("), strings.HasSuffix(before, "="), opensPipeline(before):
+		return templateArgsInRange(actionText, end, commandEnd(actionText, end, close)), true
+	default:
+		return nil, true
+	}
+}
+
+// opensPipeline reports whether text, an action up to an operand, holds only
+// the opening delimiter and keywords, so the operand starts the pipeline.
+func opensPipeline(text string) bool {
+	open := strings.Index(text, "{{")
+	if open < 0 {
+		return false
+	}
+	for _, word := range strings.Fields(strings.TrimPrefix(text[open+2:], "-")) {
+		switch {
+		case word == "if", word == "else", word == "with", word == "range", word == "template", word == "block":
+		case strings.HasPrefix(word, `"`):
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+// commandEnd returns where the command that continues at start ends: at the
+// parenthesis closing its group, at a pipe, or at close.
+func commandEnd(actionText string, start, close int) int {
+	depth := 0
+	inQuote := false
+	escaped := false
+	for index := start; index < close; index++ {
+		ch := actionText[index]
+		switch {
+		case escaped:
+			escaped = false
+		case ch == '\\':
+			escaped = true
+		case ch == '"':
+			inQuote = !inQuote
+		case inQuote:
+		case ch == '(':
+			depth++
+		case ch == ')':
+			if depth == 0 {
+				return index
+			}
+			depth--
+		case ch == '|' && depth == 0:
+			return index
+		}
+	}
+	return close
 }
 
 func functionArgumentDiagnostic(text string, actionStart int, name string, functionEnd int, fn goFuncIndex, args []templateArg, idx lspIndex, contract templateIndex, dotType string) (diagnostic, bool) {

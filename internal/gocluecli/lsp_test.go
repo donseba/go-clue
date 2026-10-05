@@ -3142,3 +3142,50 @@ func applyTextEdits(text string, edits []textEdit) string {
 	}
 	return text
 }
+
+func TestLSPMethodArgumentsEndWithTheirCommand(t *testing.T) {
+	idx := lspIndex{indexFile: indexFile{
+		Types: map[string]goTypeIndex{
+			"example.com/app.Event": {
+				Name: "Event",
+				Fields: map[string]fieldIndex{
+					"Start": {Type: "time.Time"},
+					"End":   {Type: "time.Time"},
+					"Title": {Type: "string"},
+				},
+			},
+			"time.Time": {
+				Name:   "Time",
+				Fields: map[string]fieldIndex{},
+				Methods: map[string]methodIndex{
+					"Equal":  {Type: "bool", Params: []string{"time.Time"}},
+					"Format": {Type: "string", Params: []string{"string"}},
+					"IsZero": {Type: "bool"},
+				},
+			},
+		},
+		Short: map[string][]string{"Event": {"example.com/app.Event"}},
+	}}
+	contract := templateIndex{Dot: "example.com/app.Event"}
+	header := "{{/* @dot example.com/app.Event */}}\n"
+
+	valid := diagnosticsForText(header+`{{ if or .End.IsZero (eq .Title "x") }}{{ end }}
+{{ if and (not .End.IsZero) (not (.End.Equal .Start)) }}{{ end }}
+{{ .End.Format "2006" }}
+{{ .End.Format "2006" | printf "%s" }}
+{{ $year := .End.Format "2006" }}{{ $year }}
+{{ with .End.Format "2006" }}{{ . }}{{ end }}
+{{ printf "%s" (.End.Format "2006") }}
+{{ "2006" | .End.Format }}`, idx, contract)
+	if len(valid) != 0 {
+		t.Fatalf("diagnostics = %#v, want operands after a method to belong to the enclosing command", valid)
+	}
+
+	for text, message := range map[string]string{
+		`{{ .End.IsZero "x" }}`:         "Function IsZero expects 0 argument(s), got 1",
+		`{{ printf "%s" .End.Format }}`: "Function Format expects 1 argument(s), got 0",
+		`{{ if .End.Equal }}{{ end }}`:  "Function Equal expects 1 argument(s), got 0",
+	} {
+		assertDiagnostic(t, diagnosticsForText(header+text, idx, contract), message)
+	}
+}
