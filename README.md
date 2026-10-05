@@ -220,7 +220,9 @@ For larger projects, prefer explicit config:
 `functionMaps` and `//go-clue:funcmap` are statically analyzed. go-clue does not
 execute Go code or use reflection. For v1, use direct composite literals such as
 `template.FuncMap{...}`, `map[string]any{...}`, or
-`map[string]interface{}{...}`. Dynamic construction is reported as unsupported:
+`map[string]interface{}{...}`, returned directly or through a variable that
+holds the literal and is not used otherwise. Dynamic construction is reported
+as unsupported:
 
 ```go
 func TemplateFuncs() template.FuncMap {
