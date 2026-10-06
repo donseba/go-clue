@@ -8,12 +8,20 @@ import com.intellij.openapi.vfs.LocalFileSystem
 import java.io.File
 import java.security.MessageDigest
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.locks.ReentrantLock
 import java.util.regex.Pattern
 import java.util.concurrent.TimeUnit
+import kotlin.concurrent.withLock
 
 object GoClueIndexer {
+    // A build that left no index (it failed, or the module has no template
+    // contracts) is not requested again on demand for this long.
+    private const val missingIndexRetryMillis = 60_000L
+
     private val runtime = GoClueRuntime()
-    private val pendingShadowBuilds = ConcurrentHashMap.newKeySet<String>()
+    private val buildLocks = ConcurrentHashMap<String, ReentrantLock>()
+    private val missingIndexBuilds = ConcurrentHashMap<String, Long>()
+    private val dependencySources = ConcurrentHashMap<String, Boolean>()
 
     @Volatile
     private var cachedGoRoot: String? = null
@@ -32,6 +40,16 @@ object GoClueIndexer {
 
     fun findModuleRoot(filePath: String?): File? {
         return runtime.findModuleRoot(filePath)
+    }
+
+    // projectModuleRoots are the modules of the project's own content roots.
+    // Modules of other open files are indexed on demand when one of their
+    // templates is used.
+    fun projectModuleRoots(project: Project): List<File> {
+        val paths = goClueReadAction {
+            ProjectRootManager.getInstance(project).contentRoots.map { it.path } + listOfNotNull(project.basePath)
+        }
+        return paths.mapNotNull(::findModuleRoot).distinctBy { it.canonicalPath }
     }
 
     fun moduleRoots(project: Project): List<File> {
@@ -100,7 +118,13 @@ object GoClueIndexer {
 
     fun enabled(project: Project, root: File): Boolean {
         if (!GoClueSettings.getInstance(project).state.enabled) return false
+        if (isDependencySource(root)) return false
         return projectConfigEnabled(root)
+    }
+
+    // isDependencySource is asked on every hover, so the answer is kept per root.
+    private fun isDependencySource(root: File): Boolean {
+        return dependencySources.computeIfAbsent(root.path) { runtime.isDependencySource(root) }
     }
 
     fun autoIndexEnabled(project: Project, root: File): Boolean {
@@ -125,25 +149,47 @@ object GoClueIndexer {
         return File(File(base, digest), "index.json")
     }
 
-    fun requestShadowIndex(project: Project, root: File) {
-        if (!enabled(project, root) || autoIndexEnabled(project, root)) return
-        val outFile = shadowIndexFile(root)
+    // requestIndex builds the index of a module in the background. A shadow
+    // index is rebuilt on every request; .go-clue/index.json is only built when
+    // it is missing, because the startup build and the watcher keep it current.
+    fun requestIndex(project: Project, root: File) {
+        if (!enabled(project, root)) return
+        val outFile = indexTarget(project, root)
+        if (autoIndexEnabled(project, root) && outFile.isFile) return
         val key = outFile.canonicalPath
-        if (!pendingShadowBuilds.add(key)) return
+        if (buildLocks[key]?.isLocked == true) return
+        // Hovering asks for the index on every mouse move, so a module whose
+        // last build left no index is not rebuilt again right away.
+        val missingSince = missingIndexBuilds[key]
+        if (missingSince != null && System.currentTimeMillis() - missingSince < missingIndexRetryMillis) return
 
         ApplicationManager.getApplication().executeOnPooledThread {
-            try {
-                outFile.parentFile.mkdirs()
-                val result = run(root, outFile)
-                if (result.exitCode == 0) {
-                    ApplicationManager.getApplication().invokeLater {
-                        LocalFileSystem.getInstance().refreshAndFindFileByIoFile(outFile)
-                        GoClueEditorRefresh.refresh(project)
-                    }
-                }
-            } finally {
-                pendingShadowBuilds.remove(key)
+            val result = buildIndex(root, outFile)
+            // Refresh only when there is an index to show: a refresh asks for
+            // the index again, and would start another build if there is none.
+            if (result.exitCode != 0 || !outFile.isFile) return@executeOnPooledThread
+            ApplicationManager.getApplication().invokeLater {
+                LocalFileSystem.getInstance().refreshAndFindFileByIoFile(outFile)
+                GoClueEditorRefresh.refresh(project)
             }
+        }
+    }
+
+    // buildIndex runs go-clue index into outFile. Builds of the same file run
+    // one at a time, because go-clue writes the index in place: the startup,
+    // on-demand, watcher and manual builds wait for each other.
+    fun buildIndex(root: File, outFile: File): ProcessResult {
+        val key = outFile.canonicalPath
+        val lock = buildLocks.computeIfAbsent(key) { ReentrantLock() }
+        return lock.withLock {
+            outFile.parentFile.mkdirs()
+            val result = run(root, outFile)
+            if (result.exitCode == 0 && outFile.isFile) {
+                missingIndexBuilds.remove(key)
+            } else {
+                missingIndexBuilds[key] = System.currentTimeMillis()
+            }
+            result
         }
     }
 

@@ -76,10 +76,35 @@ class GoClueRuntimeTest {
     }
 
     @Test
+    fun `module cache and GOROOT modules are dependency source`() {
+        val runtime = GoClueRuntime(emptyMap())
+        val cached = module("gopath/pkg/mod/github.com/donseba/go-partial@v0.12.0", "github.com/donseba/go-partial")
+        assertTrue(runtime.isDependencySource(cached))
+
+        val customCache = temporary.newFolder("custom mod cache")
+        val custom = module("custom mod cache/example.com/lib@v1.0.0", "example.com/lib")
+        assertFalse(runtime.isDependencySource(custom))
+        assertTrue(GoClueRuntime(mapOf("GOMODCACHE" to customCache.path)).isDependencySource(custom))
+
+        assertTrue(runtime.isDependencySource(module("sdk/src", "std")))
+        assertTrue(runtime.isDependencySource(module("sdk/src/cmd", "cmd")))
+
+        assertFalse(runtime.isDependencySource(module("projects/go-webthings-demo", "github.com/donseba/go-webthings-demo")))
+        assertFalse(runtime.isDependencySource(module("me@work/pkg/mod-tools", "example.com/tools")))
+    }
+
+    @Test
     fun `Darwin and Mac OS X are never treated as Windows`() {
         assertFalse(GoClueRuntime(osName = "Darwin").isWindows)
         assertFalse(GoClueRuntime(osName = "Mac OS X").isWindows)
         assertTrue(GoClueRuntime(osName = "Windows 11").isWindows)
+    }
+
+    private fun module(path: String, name: String): File {
+        return File(temporary.root, path).apply {
+            mkdirs()
+            File(this, "go.mod").writeText("module $name\n")
+        }
     }
 
     private fun executable(directory: File, name: String, body: String = "exit 0"): File {

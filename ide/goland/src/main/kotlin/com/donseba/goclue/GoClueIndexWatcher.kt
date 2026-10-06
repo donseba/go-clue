@@ -46,7 +46,7 @@ object GoClueIndexWatcher {
                 val outFile = GoClueIndexer.indexTarget(project, root)
                 outFile.parentFile.mkdirs()
 
-                val result = GoClueIndexer.run(root, outFile)
+                val result = GoClueIndexer.buildIndex(root, outFile)
                 if (result.exitCode != 0) {
                     notify(project, "go-clue auto-index failed", result.stderr.ifBlank { result.stdout }, NotificationType.WARNING)
                     return@addRequest

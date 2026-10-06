@@ -8,6 +8,7 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.vfs.LocalFileSystem
 import java.io.File
 import java.nio.charset.StandardCharsets
+import java.util.concurrent.ConcurrentHashMap
 
 data class GoClueType(
     val fqName: String,
@@ -80,6 +81,19 @@ class GoClueIndex(
     val checkedPaths: List<String> = emptyList(),
     val loadError: String? = null,
 ) {
+    private fun withCheckedPaths(checkedPaths: List<String>): GoClueIndex = GoClueIndex(
+        types = types,
+        funcs = funcs,
+        templates = templates,
+        short = short,
+        symbolAliases = symbolAliases,
+        symbolStrictMode = symbolStrictMode,
+        source = source,
+        rootPath = rootPath,
+        checkedPaths = checkedPaths,
+        loadError = loadError,
+    )
+
     companion object {
         fun load(project: Project): GoClueIndex {
             return load(project, null)
@@ -98,18 +112,43 @@ class GoClueIndex(
             }
                 ?: root?.let { shadowIndexFile(it, checked) }
                 ?: run {
-                    if (root != null) GoClueIndexer.requestShadowIndex(project, root)
+                    if (root != null) GoClueIndexer.requestIndex(project, root)
                     return empty(checkedPaths = checked)
                 }
 
             return try {
-                parse(readIndexText(indexFile), indexFile.path, root?.path ?: indexFile.parentFile.parentFile.path, checked)
+                parseCached(indexFile, root?.path ?: indexFile.parentFile.parentFile.path, checked)
             } catch (err: Throwable) {
                 empty(
                     checkedPaths = checked,
                     loadError = "${err.javaClass.simpleName}: ${err.message ?: "failed to load index"}",
                 )
             }
+        }
+
+        // parsed keeps the last parse of every index file until the file
+        // changes. Ctrl+hover asks for the index on each mouse move, and an
+        // index can be megabytes of JSON.
+        private val parsed = ConcurrentHashMap<String, ParsedIndex>()
+
+        private class ParsedIndex(
+            val modified: Long,
+            val size: Long,
+            val rootPath: String,
+            val index: GoClueIndex,
+        )
+
+        private fun parseCached(indexFile: File, rootPath: String, checkedPaths: List<String>): GoClueIndex {
+            val modified = indexFile.lastModified()
+            val size = indexFile.length()
+            val cached = parsed[indexFile.path]
+            if (cached != null && cached.modified == modified && cached.size == size && cached.rootPath == rootPath) {
+                return cached.index.withCheckedPaths(checkedPaths)
+            }
+
+            val index = parse(readIndexText(indexFile), indexFile.path, rootPath, checkedPaths)
+            parsed[indexFile.path] = ParsedIndex(modified, size, rootPath, index)
+            return index
         }
 
         private fun empty(
@@ -373,12 +412,6 @@ class GoClueIndex(
         return types[typeName]?.fields.orEmpty()
     }
 
-    fun membersForType(typeName: String?): Map<String, String> {
-        val type = types[typeName] ?: return emptyMap()
-        return type.fields.mapValues { (_, field) -> field.type } +
-            type.methods.mapValues { (_, method) -> method.type }
-    }
-
     fun resolveExpressionType(contract: TemplateContract, expression: String, dotType: String? = null): String? {
         val valueType = resolveExpressionValueType(contract, expression, dotType) ?: return null
         return resolveGoType(valueType)
@@ -476,12 +509,32 @@ class GoClueIndex(
     fun resolveFieldValuePath(rootType: String, fields: List<String>): String? {
         var current: String? = rootType
         for ((index, field) in fields.withIndex()) {
-            val typ = types[current] ?: return null
-            val memberType = typ.fields[field]?.type ?: typ.methods[field]?.type ?: return null
+            val memberType = memberType(current, field) ?: return null
             if (index == fields.lastIndex) return memberType
             current = resolveGoType(memberType)
         }
         return current
+    }
+
+    // memberType is the type of a field or method of ownerType, qualified when
+    // it is declared in the owner's own package.
+    fun memberType(ownerType: String?, name: String): String? {
+        val owner = types[ownerType] ?: return null
+        val memberType = owner.fields[name]?.type ?: owner.methods[name]?.type ?: return null
+        return qualifyMemberType(owner, memberType)
+    }
+
+    // qualifyMemberType qualifies a member type declared in the owner's own
+    // package. The index stores those unqualified ("Site", "[]Category",
+    // "*Page"), which is ambiguous as soon as another package declares a type
+    // with the same name.
+    private fun qualifyMemberType(owner: GoClueType, typeExpr: String): String {
+        val trimmed = typeExpr.trim()
+        val base = normalizeGoType(trimmed)
+        if (owner.pkg.isBlank() || base.isBlank() || base.any { it in ".[]{}" }) return trimmed
+        val qualified = "${owner.pkg}.$base"
+        if (!types.containsKey(qualified)) return trimmed
+        return trimmed.removeSuffix(base) + qualified
     }
 
     fun resolveGoType(typeExpr: String): String? {

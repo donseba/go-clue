@@ -20,6 +20,27 @@ internal class GoClueRuntime(
         return null
     }
 
+    // isDependencySource reports whether a module root is read-only dependency
+    // source: a module in the module cache (<GOMODCACHE>/<module>@<version>) or
+    // the standard library in GOROOT. Its templates are not the user's to check.
+    fun isDependencySource(root: File): Boolean {
+        val path = root.absoluteFile
+        env("GOMODCACHE")?.let { cache ->
+            if (path.startsWith(File(cache).absoluteFile)) return true
+        }
+        var sawVersion = false
+        var dir: File? = path
+        while (dir != null) {
+            if ('@' in dir.name) sawVersion = true
+            if (sawVersion && dir.name == "mod" && dir.parentFile?.name == "pkg") return true
+            dir = dir.parentFile
+        }
+        val module = runCatching {
+            File(path, "go.mod").useLines { lines -> lines.firstOrNull { it.startsWith("module ") } }
+        }.getOrNull()
+        return module?.removePrefix("module ")?.trim() in setOf("std", "cmd")
+    }
+
     fun findExecutable(root: File, executable: String): File? {
         val names = if (isWindows) listOf("$executable.exe", executable) else listOf(executable)
         val dirs = buildList {

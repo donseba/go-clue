@@ -32,7 +32,7 @@ object GoClueCliInstaller {
                     }
 
                     indicator.text = "Running go-clue index"
-                    val result = GoClueIndexer.run(root, outFile)
+                    val result = GoClueIndexer.buildIndex(root, outFile)
                     if (result.exitCode != 0) {
                         notify(project, "go-clue index failed", result.stderr.ifBlank { result.stdout }, NotificationType.ERROR)
                         return

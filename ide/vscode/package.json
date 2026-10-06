@@ -47,6 +47,12 @@
   ],
   "main": "./extension.js",
   "contributes": {
+    "semanticTokenModifiers": [
+      {
+        "id": "struct",
+        "description": "A field that holds a struct, such as .Site in .Site.Name."
+      }
+    ],
     "languages": [
       {
         "id": "go-template",
@@ -95,15 +101,33 @@
       },
       "editor.semanticTokenColorCustomizations": {
         "rules": {
-          "variable:go-template": "#DCDCAA",
+          "function:go-template": "#DCDCAA",
+          "function.defaultLibrary:go-template": "#C586C0",
+          "method:go-template": "#61AFEF",
           "property:go-template": "#9CDCFE",
-          "type:go-template": "#4EC9B0",
-          "variable:go-html-template": "#DCDCAA",
+          "property.struct:go-template": "#56B6C2",
+          "variable:go-template": "#D19A66",
+          "parameter:go-template": { "foreground": "#56B6C2", "bold": true },
+          "type:go-template": "#98C379",
+          "namespace:go-template": { "foreground": "#98C379", "italic": true },
+          "function:go-html-template": "#DCDCAA",
+          "function.defaultLibrary:go-html-template": "#C586C0",
+          "method:go-html-template": "#61AFEF",
           "property:go-html-template": "#9CDCFE",
-          "type:go-html-template": "#4EC9B0",
-          "variable:gotmpl": "#DCDCAA",
+          "property.struct:go-html-template": "#56B6C2",
+          "variable:go-html-template": "#D19A66",
+          "parameter:go-html-template": { "foreground": "#56B6C2", "bold": true },
+          "type:go-html-template": "#98C379",
+          "namespace:go-html-template": { "foreground": "#98C379", "italic": true },
+          "function:gotmpl": "#DCDCAA",
+          "function.defaultLibrary:gotmpl": "#C586C0",
+          "method:gotmpl": "#61AFEF",
           "property:gotmpl": "#9CDCFE",
-          "type:gotmpl": "#4EC9B0"
+          "property.struct:gotmpl": "#56B6C2",
+          "variable:gotmpl": "#D19A66",
+          "parameter:gotmpl": { "foreground": "#56B6C2", "bold": true },
+          "type:gotmpl": "#98C379",
+          "namespace:gotmpl": { "foreground": "#98C379", "italic": true }
         }
       }
     },

@@ -56,6 +56,8 @@ type (
 		// Interface marks interface types, which accept any type with
 		// their methods.
 		Interface bool `json:"interface,omitempty"`
+		// Struct marks struct types.
+		Struct bool `json:"struct,omitempty"`
 	}
 
 	fieldIndex struct {
@@ -1162,6 +1164,7 @@ func indexPackageTypeDecl(root string, fileSet *token.FileSet, pkg *packages.Pac
 		}
 		if named, structType := namedStruct(obj.Type()); named != nil && structType != nil {
 			indexed.Fields = exportedTypedFields(root, fileSet, pkg, idx, structType, typeSpec)
+			indexed.Struct = true
 		} else if iface := namedInterface(obj.Type()); iface != nil {
 			indexed.Fields = map[string]fieldIndex{}
 			indexed.Interface = true
@@ -1660,6 +1663,7 @@ func indexReachableNamedType(root string, fileSet *token.FileSet, idx *indexFile
 			Fields:    exportedExternalFields(root, fileSet, idx, current, named, seen),
 			Methods:   make(map[string]methodIndex),
 			Interface: types.IsInterface(named),
+			Struct:    isStructType(named),
 		}
 		if typ.Fields == nil {
 			typ.Fields = make(map[string]fieldIndex)
@@ -1782,6 +1786,11 @@ func signatureResults(sig *types.Signature, current *types.Package) []string {
 
 func typeString(typ types.Type, current *types.Package) string {
 	return types.TypeString(types.Unalias(typ), typeQualifier(current))
+}
+
+func isStructType(typ types.Type) bool {
+	_, ok := typ.Underlying().(*types.Struct)
+	return ok
 }
 
 // qualifiedSignature is sig with full package paths and without parameter
