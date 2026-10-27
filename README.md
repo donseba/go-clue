@@ -10,8 +10,9 @@ Previously published as `go-doc`. The module and CLI are now
 `github.com/donseba/go-clue` and `go-clue`. Move project configuration to
 `.go-clue/config.json` and use `//go-clue:sig`, `//go-clue:funcmap`, and
 `//go-clue:provider` in new code. Existing `//go-doc:` annotations remain
-supported, and `.go-doc/config.json` is read when the new configuration is absent.
-Regenerate optional indexes under `.go-clue/index.json` and reinstall the editor
+supported, and `.go-doc/config.json` is read when the new configuration is absent,
+by the CLI, the language server and the GoLand and VS Code plugins; the two files
+are never merged. Regenerate optional indexes under `.go-clue/index.json` and reinstall the editor
 integration for the new name.
 
 It reads lightweight typed-root annotations, `@dot`, `@func`, `@gen`, and project-defined
@@ -59,14 +60,16 @@ contract that editors and tools can understand.
 - Typeahead for typed roots, built-in
   and custom template functions, exported fields, and exported methods.
 - Dot-context completion inside `range` and `with` blocks.
-- Diagnostics for unknown typed roots, fields, invalid `range` sources, and bad
-  function calls.
+- Diagnostics for unknown typed roots, fields, invalid `range` sources, bad
+  function calls, and typed roots or functions that are declared but not used.
 - Include checks for `template`, `block`, same-file `define`, and cross-file
   child templates that declare `@dot`.
-- Quick fixes for creating missing model structs and adding missing struct
-  fields from template diagnostics.
+- Quick fixes for creating missing model structs, adding missing struct
+  fields, and moving annotations that sit before a `define` inside it.
 - Hover and go-to-definition for typed root types, fields, methods, functions, and
   template includes.
+- Rename for typed roots within a template.
+- Document symbols for declared typed roots.
 - Semantic highlighting for typed root types, typed root names,
   built-in functions, custom functions, fields, and methods.
 - A shared LSP core used by GoLand, VS Code, Sublime Text, Vim, and Neovim.
@@ -152,7 +155,13 @@ available as `.`:
 
 When a parent calls that child with `{{ template "user_row.gohtml" . }}`,
 go-clue checks that the passed value matches the child `@dot` contract. The same
-check applies to named `define` sections and `block` calls.
+check applies to named `define` sections and `block` calls. A value of type
+`any` is accepted, since only the running template knows what it holds.
+
+Annotations are read from template comments, also trimmed ones such as
+`{{- /* @dot github.com/example/app.User */ -}}`, one per line. A comment is
+text otherwise: a `{{ template "x" .Tabs }}` example or a sentence that mentions
+`@model` inside it is neither checked nor read as an annotation.
 
 Use `@func` for custom helpers that are local to one template:
 
@@ -221,8 +230,20 @@ For larger projects, prefer explicit config:
 execute Go code or use reflection. For v1, use direct composite literals such as
 `template.FuncMap{...}`, `map[string]any{...}`, or
 `map[string]interface{}{...}`, returned directly or through a variable that
-holds the literal and is not used otherwise. Dynamic construction is reported
-as unsupported:
+holds the literal and is not used otherwise. A configured FuncMap does not need
+to be exported. Entries may name functions or methods, or be function literals,
+whose own signatures are used:
+
+```go
+func placeholderFuncMap() template.FuncMap {
+    return template.FuncMap{
+        "content": func() template.HTML { return "" },
+        "partial": func(*Runtime, string, ...any) template.HTML { return "" },
+    }
+}
+```
+
+Dynamic construction is reported as unsupported:
 
 ```go
 func TemplateFuncs() template.FuncMap {
@@ -245,10 +266,10 @@ For helpers with multiple accepted call forms, use `templateFunctions`:
   "templateFunctions": [
     {
       "name": "async",
-      "path": "github.com/donseba/go-partial/templatefunctions.Async",
+      "path": "github.com/example/ui.Async",
       "signatures": [
         "func(endpoint string, params ...any) html/template.HTML",
-        "func(interaction github.com/donseba/go-partial.Interaction) html/template.HTML"
+        "func(interaction github.com/example/ui.Interaction) html/template.HTML"
       ]
     }
   ]
@@ -261,8 +282,20 @@ so this also works for helper packages that live in dependencies:
 
 ```go
 //go-clue:sig func(endpoint string, params ...any) html/template.HTML
-//go-clue:sig func(interaction github.com/donseba/go-partial.Interaction) html/template.HTML
+//go-clue:sig func(interaction github.com/example/ui.Interaction) html/template.HTML
 func Async() {}
+```
+
+An entry with only a `name` declares a function that exists at runtime but
+that go-clue cannot type: its calls are not checked, and it is not reported as
+unknown (see `unknownFunctions`).
+
+```json
+{
+  "templateFunctions": [
+    { "name": "csrfField" }
+  ]
+}
 ```
 
 Request-scoped helpers that are installed as closures can put `//go-clue:sig`
@@ -324,7 +357,7 @@ Any custom annotation with an explicit type is accepted by default:
 ```gotemplate
 {{/*
 @component Button github.com/example/ui.Button
-@interaction LikesPoll github.com/donseba/go-partial.Interaction
+@interaction LikesPoll github.com/donseba/go-partial/exp/interactions.Interaction
 */}}
 ```
 
@@ -337,7 +370,7 @@ go-clue, and it lets stricter teams decide which annotation names are allowed:
   "symbolAnnotations": [
     {
       "name": "interaction",
-      "type": "github.com/donseba/go-partial.Interaction"
+      "type": "github.com/donseba/go-partial/exp/interactions.Interaction"
     },
     {
       "name": "component"
@@ -369,9 +402,10 @@ are accepted as custom typed-root annotations.
 
 ## Configuration
 
-No `.go-clue` folder is required. By default, `go-clue` finds the nearest
-`go.mod`, scans that module in memory, skips `vendor`, and does not write
-`.go-clue/index.json`.
+No `.go-clue` folder is required. The language server and `go-clue check` use
+the nearest `go.mod` above each template. `types`, `templates` and `index` take
+the module root as their argument, the current folder by default. go-clue scans
+the module in memory, skips `vendor`, and does not write `.go-clue/index.json`.
 
 The default configuration is:
 
@@ -391,6 +425,7 @@ The default configuration is:
   "templateFunctions": [],
   "symbolAnnotations": [],
   "symbolStrictMode": false,
+  "unknownFunctions": "",
   "writeIndex": false
 }
 ```
@@ -422,7 +457,7 @@ Add `.go-clue/config.json` only when a project needs to change those defaults:
   "templateFunctions": [
     {
       "name": "async",
-      "path": "github.com/donseba/go-partial/templatefunctions.Async"
+      "path": "github.com/example/ui.Async"
     }
   ],
   "symbolAnnotations": [
@@ -435,7 +470,10 @@ Add `.go-clue/config.json` only when a project needs to change those defaults:
 ```
 
 Entries are module-relative paths. `/` means the module root. Excludes win over
-includes. `enabled: false` disables go-clue for the project while leaving the
+includes. Setting `exclude` replaces the default `["vendor"]`, so keep `vendor`
+in your own list. go-clue always skips nested modules and folders named `.git`,
+`.idea`, `node_modules`, `references`, `dist`, `build` and `out`, also when
+`include` names them. `enabled: false` disables go-clue for the project while leaving the
 editor plugin installed. `functions` describes helpers that are available in every template so
 the language server can complete and validate them without repeating `@func` in
 each file. `functionMaps` describes whole static Go FuncMap declarations whose
@@ -466,6 +504,12 @@ like a named root value but is not a callable function. `symbolStrictMode` defau
 `false`; when set to `true`, unconfigured custom annotation names are reported as
 typos even if they include an explicit type.
 
+`unknownFunctions` reports calls to functions that are neither text/template's
+own nor declared by a function map, `functions`, `templateFunctions`, `@func`,
+`@gen` or a typed root. Set it to the severity to report them at: `"error"`,
+`"warning"`, `"info"` or `"hint"`. It is off by default, so projects that have
+not declared all their functions see no new diagnostics.
+
 `writeIndex` controls editor auto-indexing. Keep it `false` unless you want editor
 adapters to maintain `.go-clue/index.json` after file changes. Even when it is
 false, the language server still builds an in-memory index and all editor
@@ -486,7 +530,15 @@ go-clue index -o .go-clue/index.json .
 `go-clue index` only writes an index when at least one template declares a typed
 contract, or when `.go-clue/config.json` declares global template functions. If
 no typed template surface exists, the command exits successfully without
-creating `.go-clue/index.json`.
+creating `.go-clue/index.json`. An index already at the `-o` path is removed.
+
+The index records its format in `version`. Version 3 stores the results of
+functions fully qualified, such as `example.com/app.User`; version 2 stored
+them relative to the function's package. The language server does not read an
+index of another version: it builds the index in memory instead. The GoLand
+plugin reads versions 2 and 3, and reports any other version in
+`Tools > Show go-clue Status` and the IDE log. Write the index again after
+upgrading go-clue.
 
 ## Commands
 
@@ -494,8 +546,41 @@ creating `.go-clue/index.json`.
 go-clue types [-query Todo] [root]
 go-clue templates [root]
 go-clue index [-o .go-clue/index.json] [root]
+go-clue check [-json] [-severity warning] [-fail-on error] [-root dir] [-config file] [-problems] [path ...]
 go-clue lsp [root]
+go-clue version
 ```
+
+`types` and `templates` print the Go types and the template contracts go-clue
+found, as JSON. `-query` filters the types by name. `index` writes the full
+index to stdout, or to the `-o` file. `version` prints the installed version.
+
+## Checking a Project
+
+`go-clue check` reports the diagnostics of the language server for every
+template at once, for scripts, tests and CI:
+
+```bash
+go-clue check .
+go-clue check -json -fail-on warning ./templates
+go-clue check -root . ./tmp/generated/page.gohtml
+```
+
+Each path is a folder or a template file; the default is the current folder.
+A folder is checked with the configuration of the module it is in: the folders
+go-clue skips, `exclude` and nested modules are left out. A file is checked as
+it is. `-root` checks every path in that project instead, also templates outside
+it, such as generated ones, which get the project's functions. `-config` uses
+another configuration file instead of `.go-clue/config.json`.
+
+The text output has one line per diagnostic, `file:line:column: severity:
+message`, and a summary on stderr. `-json` writes an object with the counts
+and a `diagnostics` list with 1-based positions. `-severity` (default
+`warning`) is the least severe diagnostic reported; `-fail-on` (default
+`error`) is the least severe diagnostic that makes the command exit with 1,
+whether reported or not. Templates that do not parse are reported as errors.
+`-problems` also reports the problems of building the index, such as a
+configured function map that does not exist. Other failures exit with 2.
 
 ## Language Server
 
@@ -504,8 +589,20 @@ shared implementation used by all editor packages.
 
 The server builds an in-memory index from the module root by default. It reads
 `.go-clue/index.json` only when `.go-clue/config.json` opts into `"writeIndex": true`.
-Completion, diagnostics, hover, go-to-definition, semantic tokens, and include
-checks still work without a `.go-clue` folder.
+Completion, diagnostics, hover, go-to-definition, rename, quick fixes, document
+symbols, semantic tokens, and include checks still work without a `.go-clue`
+folder.
+
+The root is the folder passed to `go-clue lsp`, or the current folder. It does
+not need a `go.mod`: every template is checked in the module of the nearest
+`go.mod` above it, so the server also serves a parent folder of several
+modules. When the root has no `go.mod`, the server uses the nearest one above
+it. When there is none above it either, the server starts without a root
+module and says so on stderr, which editors show in their language server log.
+Templates in no module then get no Go types.
+
+As the protocol asks, the server exits with 0 when the editor sends `shutdown`
+before `exit`, and with 1 when `exit` comes without `shutdown`.
 
 ## Experimental Generation
 
@@ -518,7 +615,9 @@ checks still work without a `.go-clue` folder.
 */}}
 
 {{ time.Format Page.GeneratedAt "15:04:05" }}
-{{ money.EUR .MonthlyCents }}
+{{ range Page.Accounts }}
+    {{ money.EUR .MonthlyCents }}
+{{ end }}
 ```
 
 This is not a runtime import. The generator writes ordinary Go code that exposes
@@ -559,9 +658,10 @@ for the full explanation.
 change how your application renders HTML.
 
 For projects that want annotated typed-root names available during ordinary
-`html/template` parsing, the repository includes a small `renderer` package. It
-can scan the same template declarations, match them to the Go values you pass,
-and register the declared typed-root accessors before parsing:
+`html/template` parsing, the repository includes a small `renderer` package,
+`github.com/donseba/go-clue/renderer`. It can scan the same template
+declarations, match them to the Go values you pass, and register the declared
+typed-root accessors before parsing.
 
 Think of `@model` as a tunnel. The template declares the entrance:
 
@@ -571,13 +671,15 @@ Think of `@model` as a tunnel. The template declares the entrance:
 ```
 
 The renderer creates the exit by registering a template function named `Page`
-that returns the matching Go value:
+that returns the matching Go value.
 
 Create one renderer for a template set. Use `renderer.Development` while
 editing templates, or `renderer.Production` when you want contracts scanned once
-at startup:
+at startup. An empty `Mode` is Production:
 
 ```go
+import "github.com/donseba/go-clue/renderer"
+
 views, err := renderer.New(renderer.Config{
     Mode:  renderer.Development,
     Files: []string{"templates/page.gohtml"},
@@ -604,13 +706,22 @@ with `tmpl.Execute(w, page)`.
 the config teaches editors about globally available helpers, while the renderer
 registers the real Go functions with `html/template`.
 
-Development mode re-reads `@model` declarations on each `Register` call, so
-template-side renames are picked up without restarting. Production mode reads
+Development mode re-reads the typed-root declarations on each `Register` call,
+so template-side renames are picked up without restarting. Production mode reads
 the declarations once in `renderer.New`, avoiding repeated file reads and
 keeping the render path predictable.
 
-The standalone example in `examples/standalone` shows this without depending on
-`go-partial`.
+`Register` matches values by type. It returns an error when a typed root
+declared in `Config.Files` gets no value of its type, or more than one. For two
+roots of the same type, register them by name with
+`renderer.Register(tmpl, renderer.Root("Owner", owner), renderer.Root("Viewer", viewer))`.
+A name declared with two different types is an error too. The renderer only
+reads declarations that name a type, and it does not read
+`.go-clue/config.json`: register roots that take their type from
+`symbolAnnotations`, such as `@interaction LikesPoll`, in your own `FuncMap`.
+
+The table example in `examples/table` shows this with a page, a row template
+and a single-file template, without depending on `go-partial`.
 
 The todo example in `examples/todo` shows a small multi-template setup with a
 main shell, todo list, and todo detail template.

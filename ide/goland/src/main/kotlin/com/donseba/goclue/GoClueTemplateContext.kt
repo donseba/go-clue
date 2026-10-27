@@ -168,10 +168,9 @@ object GoClueTemplateContext {
         index: GoClueIndex,
         contract: TemplateContract,
     ): GoClueFuncReference? {
-        for (match in templateActionPattern.findAll(text)) {
-            val actionRange = match.range
-            if (offset < actionRange.first || offset > actionRange.last + 1) continue
-            templateFunctionReferencesInAction(match.value, actionRange.first, index, contract)
+        for (action in GoClueTemplateActions.codeActions(text)) {
+            if (offset < action.start || offset > action.end) continue
+            templateFunctionReferencesInAction(action.text(text), action.start, index, contract)
                 .firstOrNull { offset >= it.startOffset && offset <= it.endOffset }
                 ?.let { return it }
         }
@@ -183,10 +182,9 @@ object GoClueTemplateContext {
         offset: Int,
         index: GoClueIndex,
     ): GoClueTemplateIncludeReference? {
-        for (match in templateActionPattern.findAll(text)) {
-            val actionRange = match.range
-            if (offset < actionRange.first || offset > actionRange.last + 1) continue
-            return templateIncludeReferencesInAction(match.value, actionRange.first, index)
+        for (action in GoClueTemplateActions.codeActions(text)) {
+            if (offset < action.start || offset > action.end) continue
+            return templateIncludeReferencesInAction(action.text(text), action.start, index)
                 .firstOrNull { offset >= it.startOffset && offset <= it.endOffset }
         }
         return null
@@ -260,10 +258,11 @@ object GoClueTemplateContext {
         contract: TemplateContract,
     ): List<GoClueFieldReference> {
         val scan = expandedTokenRange(text, startOffset, endOffset)
+        val comments = GoClueTemplateActions.comments(text)
         return tokenPattern.findAll(text, scan.first)
             .takeWhile { it.range.first < scan.last }
             .flatMap { match ->
-                if (inTemplateComment(text, match.range.first)) return@flatMap emptyList()
+                if (comments.any { match.range.first >= it.start && match.range.first < it.end }) return@flatMap emptyList()
                 if (inQuotedString(text, match.range.first)) return@flatMap emptyList()
                 val token = match.value
                 if (!token.contains('.') && contract.typedRootType(token) == null) return@flatMap emptyList()
@@ -296,7 +295,7 @@ object GoClueTemplateContext {
     }
 
     private fun typedRootReferences(text: String, index: GoClueIndex): List<GoClueTypedRootReference> {
-        val refs = annotationContractPattern.findAll(contractScanTextWithOffsets(text))
+        val refs = annotationContractPattern.findAll(GoClueTemplateActions.annotationText(text))
             .flatMap { match ->
                 val annotation = match.groupValues[1]
                 val nameRange = match.groups[2]?.range ?: return@flatMap emptyList()
@@ -318,7 +317,7 @@ object GoClueTemplateContext {
             }
             .toList()
             .toMutableList()
-        for (match in genContractPattern.findAll(contractScanTextWithOffsets(text))) {
+        for (match in genContractPattern.findAll(GoClueTemplateActions.annotationText(text))) {
             val nameRange = match.groups[1]?.range ?: continue
             val typeName = "$GEN_TYPE_PREFIX${match.groupValues[1]}"
             if (!index.types.containsKey(typeName)) continue
@@ -347,7 +346,7 @@ object GoClueTemplateContext {
     }
 
     private fun generatedNamespaceTypeReferences(text: String, index: GoClueIndex): List<GoClueTypeReference> {
-        return genContractPattern.findAll(contractScanTextWithOffsets(text)).mapNotNull { match ->
+        return genContractPattern.findAll(GoClueTemplateActions.annotationText(text)).mapNotNull { match ->
             val packageRange = match.groups[2]?.range ?: return@mapNotNull null
             val typeName = "$GEN_TYPE_PREFIX${match.groupValues[1]}"
             if (!index.types.containsKey(typeName)) return@mapNotNull null
@@ -359,14 +358,16 @@ object GoClueTemplateContext {
     }
 
     private fun typeMatches(text: String, startOffset: Int = 0): List<MatchResult> {
+        val annotations = GoClueTemplateActions.annotationText(text)
         return typePatterns
-            .flatMap { it.findAll(text, startOffset) }
+            .flatMap { it.findAll(annotations, startOffset) }
             .sortedBy { it.groups[1]?.range?.first ?: Int.MAX_VALUE }
     }
 
     fun funcReferencesInRange(text: String, startOffset: Int, endOffset: Int, index: GoClueIndex): List<GoClueFuncReference> {
         val refs = mutableListOf<GoClueFuncReference>()
-        refs.addAll(funcDeclarationPattern.findAll(text, startOffset)
+        val annotations = GoClueTemplateActions.annotationText(text)
+        refs.addAll(funcDeclarationPattern.findAll(annotations, startOffset)
             .takeWhile { (it.groups[1]?.range?.first ?: Int.MAX_VALUE) < endOffset }
             .mapNotNull { match ->
                 val nameRange = match.groups[1]?.range ?: return@mapNotNull null
@@ -376,7 +377,7 @@ object GoClueTemplateContext {
                 if (!index.funcs.containsKey(normalized)) return@mapNotNull null
                 GoClueFuncReference(normalized, nameRange.first, nameRange.last + 1)
             })
-        refs.addAll(funcTypePattern.findAll(text, startOffset)
+        refs.addAll(funcTypePattern.findAll(annotations, startOffset)
             .takeWhile { (it.groups[1]?.range?.first ?: Int.MAX_VALUE) < endOffset }
             .mapNotNull { match ->
                 val range = match.groups[1]?.range ?: return@mapNotNull null
@@ -390,11 +391,10 @@ object GoClueTemplateContext {
 
         val contract = contractForText(text, index)
         if (contract != null) {
-            for (match in templateActionPattern.findAll(text, startOffset)) {
-                val range = match.range
-                if (range.first >= endOffset) break
-                if (range.last + 1 <= startOffset) continue
-                for (ref in templateFunctionReferencesInAction(match.value, range.first, index, contract)) {
+            for (action in GoClueTemplateActions.codeActions(text)) {
+                if (action.start >= endOffset) break
+                if (action.end <= startOffset) continue
+                for (ref in templateFunctionReferencesInAction(action.text(text), action.start, index, contract)) {
                     if (ref.startOffset < endOffset && ref.endOffset > startOffset) {
                         refs.add(ref)
                     }
@@ -410,16 +410,17 @@ object GoClueTemplateContext {
         endOffset: Int,
         index: GoClueIndex,
     ): List<GoClueTemplateIncludeReference> {
-        return templateActionPattern.findAll(text, startOffset)
-            .takeWhile { it.range.first < endOffset }
-            .flatMap { match -> templateIncludeReferencesInAction(match.value, match.range.first, index) }
+        return GoClueTemplateActions.codeActions(text).asSequence()
+            .filter { it.end > startOffset }
+            .takeWhile { it.start < endOffset }
+            .flatMap { action -> templateIncludeReferencesInAction(action.text(text), action.start, index) }
             .filter { it.startOffset < endOffset && it.endOffset > startOffset }
             .distinctBy { "${it.startOffset}:${it.endOffset}:${it.templatePath}" }
             .toList()
     }
 
     private fun contractForText(text: String, index: GoClueIndex): TemplateContract? {
-        val contractText = contractScanText(text)
+        val contractText = GoClueTemplateActions.commentBodies(text)
         val typedRoots = parseTypedRoots(contractText, index)
         val roots = typedRoots.associate { it.name to (index.resolveGoType(it.typeName) ?: it.typeName) }
         val dot = dotContractPattern.find(contractText)?.let { match ->
@@ -454,30 +455,6 @@ object GoClueTemplateContext {
         }.toList()
     }
 
-    private fun contractScanText(text: String): String {
-        val matches = templateCommentBodyPattern.findAll(text).map { it.groupValues[1].trim() }.filter { it.isNotBlank() }.toList()
-        if (matches.isEmpty()) return text
-        return matches.joinToString(separator = "\n", postfix = "\n")
-    }
-
-    private fun contractScanTextWithOffsets(text: String): String {
-        val chars = CharArray(text.length) { ' ' }
-        for (match in templateCommentBodyPattern.findAll(text)) {
-            val body = match.groups[1] ?: continue
-            for (index in body.range) {
-                chars[index] = text[index]
-            }
-        }
-        return String(chars)
-    }
-
-    private fun inTemplateComment(text: String, offset: Int): Boolean {
-        val open = text.lastIndexOf("{{/*", offset)
-        if (open < 0) return false
-        val close = text.lastIndexOf("*/}}", offset)
-        return close < open
-    }
-
     private fun dotTypeAt(text: String, offset: Int, index: GoClueIndex, contract: TemplateContract): String? {
         return scopeAt(text, offset, index, contract).dotType
     }
@@ -495,9 +472,11 @@ object GoClueTemplateContext {
         val stack = mutableListOf(ScopeInfo(dotType = contract.dot.ifBlank { null }, vars = emptyMap()))
         val beforeCaret = text.substring(0, offset.coerceIn(0, text.length))
 
-        for (match in actionPattern.findAll(beforeCaret)) {
-            val keyword = match.groupValues[1]
-            val expression = match.groupValues[2].trim()
+        for (action in GoClueTemplateActions.codeActions(beforeCaret)) {
+            val content = GoClueTemplateActions.content(action.text(beforeCaret)) ?: continue
+            val keyword = content.takeWhile { it.isLetterOrDigit() || it == '_' }
+            if (keyword !in scopeKeywords) continue
+            val expression = content.substring(keyword.length).trim()
             val parent = stack.last()
             when (keyword) {
                 "range" -> {
@@ -673,14 +652,13 @@ object GoClueTemplateContext {
     }
 
     private fun modelNamesNear(text: String, offset: Int): Set<String> {
-        val before = text.substring(0, offset.coerceIn(0, text.length))
+        val before = GoClueTemplateActions.annotationText(text).substring(0, offset.coerceIn(0, text.length))
         return typedRootDeclarationPattern.findAll(before).map { it.groupValues[2] }.toSet()
     }
 
-    private val actionPattern = Regex("""\{\{\s*(?:-)?\s*(range|with|if|define|block|else|end)\b([^}]*)\}\}""")
+    private val scopeKeywords = setOf("range", "with", "if", "define", "block", "else", "end")
     private val elseWithPattern = Regex("""\s*with\b(.*)""", RegexOption.DOT_MATCHES_ALL)
     private val quotedNamePattern = Regex("""^"[^"]*"""")
-    private val templateActionPattern = Regex("""\{\{\s*(?:-)?\s*[^}]*\}\}""")
     private val templateIncludePattern = Regex("""^\{\{\s*(?:-)?\s*(?:template|block)\s+"([^"]+)"(?:\s+[^}]*)?\s*-?\}\}$""")
     private val dotContractPattern = Regex("""(?m)^\s*@dot\s+([A-Za-z0-9_./\-]+)""")
     private val funcContractPattern = Regex("""(?m)^\s*@func\s+([\u0024A-Za-z][A-Za-z0-9_]*)\s+([A-Za-z0-9_./\-]+)""")
@@ -692,7 +670,6 @@ object GoClueTemplateContext {
     private val funcTypePattern = Regex("""@func\s+[\u0024A-Za-z][A-Za-z0-9_]*\s+([A-Za-z0-9_./\-]+)""")
     private val funcDeclarationPattern = Regex("""@func\s+([\u0024A-Za-z][A-Za-z0-9_]*)\s+([A-Za-z0-9_./\-]+)""")
     private val typedRootDeclarationPattern = Regex("""@([A-Za-z_][A-Za-z0-9_]*)\s+([\u0024A-Za-z][A-Za-z0-9_]*)\s+[A-Za-z0-9_./\-]+""")
-    private val templateCommentBodyPattern = Regex("""(?s)\{\{/\*(.*?)\*/\}\}""")
     private val tokenPattern = Regex("""[\u0024_A-Za-z][\u0024_A-Za-z0-9]*(?:\.[A-Za-z][A-Za-z0-9_]*)*|\.[A-Za-z][A-Za-z0-9_]*(?:\.[A-Za-z][A-Za-z0-9_]*)*""")
     private const val GEN_TYPE_PREFIX = "\$go-clue/gen."
 }

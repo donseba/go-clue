@@ -9,7 +9,6 @@ import java.io.File
 import java.security.MessageDigest
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.locks.ReentrantLock
-import java.util.regex.Pattern
 import java.util.concurrent.TimeUnit
 import kotlin.concurrent.withLock
 
@@ -193,21 +192,11 @@ object GoClueIndexer {
         }
     }
 
-    private fun projectConfigEnabled(root: File): Boolean {
-        val config = File(root, ".go-clue/config.json")
-        if (!config.isFile) return true
-        val text = runCatching { config.readText() }.getOrNull() ?: return true
-        return !Pattern.compile("\"enabled\"\\s*:\\s*false").matcher(text).find()
-    }
+    // The project configuration is .go-clue/config.json, or the older
+    // .go-doc/config.json when that does not exist, like for the CLI.
+    private fun projectConfigEnabled(root: File): Boolean = GoClueProjectConfig.enabled(root)
 
-    private fun projectConfigIndexValue(root: File): Boolean? {
-        val config = File(root, ".go-clue/config.json")
-        if (!config.isFile) return null
-        val text = runCatching { config.readText() }.getOrNull() ?: return null
-        if (Pattern.compile("\"writeIndex\"\\s*:\\s*true").matcher(text).find()) return true
-        if (Pattern.compile("\"writeIndex\"\\s*:\\s*false").matcher(text).find()) return false
-        return null
-    }
+    private fun projectConfigIndexValue(root: File): Boolean? = GoClueProjectConfig.writeIndex(root)
 
     fun install(root: File): ProcessResult {
         val commands = executableCommands(root, "go", "install", "github.com/donseba/go-clue@latest")

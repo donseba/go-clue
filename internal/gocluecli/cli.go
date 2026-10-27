@@ -20,6 +20,12 @@ import (
 	"golang.org/x/tools/go/packages"
 )
 
+// indexVersion is the format version of index.json. Version 3 stores function
+// results fully qualified ("example.com/app.User"), where version 2 stored them
+// relative to the function's package ("User"). Raise it whenever a reader of an
+// older index, such as an editor plugin, would misread the new one.
+const indexVersion = 3
+
 type (
 	indexFile struct {
 		Version       int                      `json:"version"`
@@ -31,6 +37,14 @@ type (
 		SymbolAliases map[string]string        `json:"symbolAliases,omitempty"`
 		SymbolStrict  bool                     `json:"symbolStrictMode,omitempty"`
 		Problems      []problem                `json:"problems,omitempty"`
+		// Functions are the template functions of the project's function
+		// maps and configuration, by name. Templates the index does not hold,
+		// such as generated ones, get these.
+		Functions map[string]string `json:"functions,omitempty"`
+		// UnknownFunctions is the severity of the diagnostic for a call to a
+		// function that no function map, configuration or annotation
+		// declares: error, warning, info or hint. It is off when empty.
+		UnknownFunctions string `json:"unknownFunctions,omitempty"`
 	}
 
 	templateIndex struct {
@@ -58,6 +72,10 @@ type (
 		Interface bool `json:"interface,omitempty"`
 		// Struct marks struct types.
 		Struct bool `json:"struct,omitempty"`
+		// Underlying is the type a named type other than a struct or an
+		// interface is defined as, such as "[7]Day" for type OpeningHours
+		// [7]Day, relative to the type's own package.
+		Underlying string `json:"underlying,omitempty"`
 	}
 
 	fieldIndex struct {
@@ -120,6 +138,10 @@ type (
 		SymbolStrict      bool                     `json:"symbolStrictMode"`
 		Enabled           *bool                    `json:"enabled"`
 		WriteIndex        bool                     `json:"writeIndex"`
+		// UnknownFunctions turns on the diagnostic for calls to functions
+		// go-clue does not know, at this severity: error, warning, info or
+		// hint. Off by default.
+		UnknownFunctions string `json:"unknownFunctions"`
 	}
 
 	discoverConfig struct {
@@ -200,16 +222,14 @@ const (
 )
 
 var (
-	dotPattern                    = regexp.MustCompile(`(?m)^\s*@dot\s+([A-Za-z_][A-Za-z0-9_./\[\]*-]*)\s*$`)
-	funcPattern                   = regexp.MustCompile(`(?m)^\s*@func\s+([A-Za-z_][A-Za-z0-9_]*)(?:\s+([A-Za-z_][A-Za-z0-9_./-]*))?\s*$`)
-	goClueSigPattern              = regexp.MustCompile(`(?m)^\s*(?://\s*)?` + metadataPrefix + `:sig\s+(.+?)\s*$`)
-	funcMapAnnotationPattern      = regexp.MustCompile(`(?m)^\s*(?://\s*)?` + metadataPrefix + `:funcmap\s*$`)
-	providerAnnotationPattern     = regexp.MustCompile(`(?m)^\s*(?://\s*)?` + metadataPrefix + `:provider\s+"?([^"\s]+)"?\s*$`)
-	genPattern                    = regexp.MustCompile(`(?m)^\s*@gen\s+([A-Za-z_][A-Za-z0-9_]*)\s+([A-Za-z_][A-Za-z0-9_./-]*)\s*$`)
-	annotationPattern             = regexp.MustCompile(`(?m)^\s*@([A-Za-z_][A-Za-z0-9_]*)\s+([A-Za-z_][A-Za-z0-9_]*)(?:\s+([A-Za-z_][A-Za-z0-9_./\[\]*-]*))?\s*$`)
-	templateCommentPattern        = regexp.MustCompile(`(?s)\{\{/\*(.*?)\*/\}\}`)
-	definePattern                 = regexp.MustCompile(`(?s)\{\{\s*(?:-)?\s*define\s+"([^"]+)"\s*(?:-)?\s*\}\}(.*?)\{\{\s*(?:-)?\s*end\s*(?:-)?\s*\}\}`)
-	leadingTemplateCommentPattern = regexp.MustCompile(`(?s)\{\{/\*.*?\*/\}\}\s*$`)
+	dotPattern                = regexp.MustCompile(`(?m)^\s*@dot\s+([A-Za-z_][A-Za-z0-9_./\[\]*-]*)\s*$`)
+	funcPattern               = regexp.MustCompile(`(?m)^\s*@func\s+([A-Za-z_][A-Za-z0-9_]*)(?:\s+([A-Za-z_][A-Za-z0-9_./-]*))?\s*$`)
+	goClueSigPattern          = regexp.MustCompile(`(?m)^\s*(?://\s*)?` + metadataPrefix + `:sig\s+(.+?)\s*$`)
+	funcMapAnnotationPattern  = regexp.MustCompile(`(?m)^\s*(?://\s*)?` + metadataPrefix + `:funcmap\s*$`)
+	providerAnnotationPattern = regexp.MustCompile(`(?m)^\s*(?://\s*)?` + metadataPrefix + `:provider\s+"?([^"\s]+)"?\s*$`)
+	genPattern                = regexp.MustCompile(`(?m)^\s*@gen\s+([A-Za-z_][A-Za-z0-9_]*)\s+([A-Za-z_][A-Za-z0-9_./-]*)\s*$`)
+	annotationPattern         = regexp.MustCompile(`(?m)^\s*@([A-Za-z_][A-Za-z0-9_]*)\s+([A-Za-z_][A-Za-z0-9_]*)(?:\s+([A-Za-z_][A-Za-z0-9_./\[\]*-]*))?\s*$`)
+	definePattern             = regexp.MustCompile(`(?s)\{\{\s*(?:-)?\s*define\s+"([^"]+)"\s*(?:-)?\s*\}\}(.*?)\{\{\s*(?:-)?\s*end\s*(?:-)?\s*\}\}`)
 )
 
 var ReservedTemplateNames = map[string]bool{
@@ -253,10 +273,19 @@ var defaultSkippedDirs = map[string]bool{
 }
 
 func Main() {
-	if err := Run(os.Args[1:]); err != nil {
-		fmt.Fprintln(os.Stderr, err)
+	err := Run(os.Args[1:])
+	if err == nil {
+		return
+	}
+	if errors.Is(err, errCheckFailed) {
 		os.Exit(1)
 	}
+	fmt.Fprintln(os.Stderr, err)
+	var exit exitCodeError
+	if errors.As(err, &exit) {
+		os.Exit(exit.code)
+	}
+	os.Exit(1)
 }
 
 func Run(args []string) error {
@@ -319,13 +348,16 @@ func Run(args []string) error {
 		}
 		return writeJSON(idx, *out)
 
+	case "check":
+		return runCheck(args[1:], os.Stdout, os.Stderr)
+
 	case "lsp":
 		fs := flag.NewFlagSet("lsp", flag.ExitOnError)
 		if err := fs.Parse(args[1:]); err != nil {
 			return err
 		}
 		root := argRoot(fs.Args())
-		return runLSP(os.Stdin, os.Stdout, root)
+		return runLSP(os.Stdin, os.Stdout, os.Stderr, root)
 
 	default:
 		return usage()
@@ -337,6 +369,7 @@ func usage() error {
   go-clue types [-query Todo] [root]
   go-clue templates [root]
   go-clue index [-o .go-clue/index.json] [root]
+  go-clue check [-json] [-severity warning] [-fail-on error] [-root dir] [-config file] [-problems] [path ...]
   go-clue lsp [root]
   go-clue version`)
 }
@@ -362,21 +395,31 @@ func buildIndexWithMode(root string, requireTemplateContracts bool) (indexFile, 
 	if err != nil {
 		return indexFile{}, false, err
 	}
+	return buildIndexFromConfig(absRoot, loadIndexConfig(absRoot), requireTemplateContracts)
+}
+
+// buildIndexFromConfig builds the index of the project at root with cfg as its
+// configuration.
+func buildIndexFromConfig(root string, cfg indexConfig, requireTemplateContracts bool) (indexFile, bool, error) {
+	absRoot, err := filepath.Abs(root)
+	if err != nil {
+		return indexFile{}, false, err
+	}
 
 	idx := indexFile{
-		Version:   2,
+		Version:   indexVersion,
 		Templates: make(map[string]templateIndex),
 		Types:     make(map[string]goTypeIndex),
 		Funcs:     make(map[string]goFuncIndex),
 		Short:     make(map[string][]string),
 	}
 
-	cfg := loadIndexConfig(absRoot)
 	if !cfg.enabled() {
 		return idx, false, nil
 	}
 	idx.SymbolAliases = symbolAliases(cfg)
 	idx.SymbolStrict = cfg.SymbolStrict
+	idx.UnknownFunctions = diagnosticSeverityName(cfg.UnknownFunctions)
 
 	module, err := readModulePath(absRoot)
 	if err != nil {
@@ -405,6 +448,7 @@ func buildIndexWithMode(root string, requireTemplateContracts bool) (indexFile, 
 	applyConfiguredTemplateFunctions(cfg, &idx)
 	addConfiguredTemplateFunctionDefaults(cfg, funcs)
 	idx.Problems = append(idx.Problems, funcs.problem...)
+	idx.Functions = contractFuncs(funcs.functionMap(), nil)
 
 	if err := scanTemplates(absRoot, cfg, funcs.functionMap(), &idx); err != nil {
 		return indexFile{}, false, err
@@ -603,15 +647,20 @@ func shouldIndexPackage(root string, pkg *packages.Package, cfg indexConfig) boo
 	return false
 }
 
+// indexPackageTypes indexes the exported types and functions of pkg. Types
+// come first, so methods declared in a file before their type's are kept.
 func indexPackageTypes(root string, fileSet *token.FileSet, pkg *packages.Package, idx *indexFile, cfg indexConfig) {
 	for _, file := range pkg.Syntax {
 		for _, decl := range file.Decls {
-			switch decl := decl.(type) {
-			case *ast.GenDecl:
-				if decl.Tok == token.TYPE {
-					indexPackageTypeDecl(root, fileSet, pkg, decl, idx)
-				}
-			case *ast.FuncDecl:
+			if decl, ok := decl.(*ast.GenDecl); ok && decl.Tok == token.TYPE {
+				indexPackageTypeDecl(root, fileSet, pkg, decl, idx)
+			}
+		}
+	}
+
+	for _, file := range pkg.Syntax {
+		for _, decl := range file.Decls {
+			if decl, ok := decl.(*ast.FuncDecl); ok {
 				indexPackageFuncDecl(root, fileSet, pkg, decl, idx, cfg)
 			}
 		}
@@ -879,6 +928,15 @@ func extractFuncMapLiteral(root string, fileSet *token.FileSet, pkg *packages.Pa
 				continue
 			}
 		}
+		if _, ok := targetObj.(*types.Func); !ok {
+			// A function literal, or another value of a function type, has
+			// no declaration to index; its signature is the entry's own.
+			if sig, ok := funcValueSignature(pkg.TypesInfo, kv.Value); ok {
+				comment := funcMapEntryComment(fileSet, file, after, kv.Pos())
+				indexFuncMapEntryValue(root, fileSet, pkg, idx, funcs, funcMapName, kv, key, sig, comment, priority)
+			}
+			continue
+		}
 		target := qualifiedObjectName(targetObj)
 		if target == "" {
 			continue
@@ -944,6 +1002,48 @@ func indexFuncMapEntrySignature(root string, fileSet *token.FileSet, pkg *packag
 	}
 	setTemplateSignatures(&fn, signatures)
 	idx.Funcs[target] = fn
+	funcs.add(templateFunctionSource{
+		Name:     name,
+		Target:   target,
+		FuncMap:  funcMapName,
+		File:     rel(root, pos.Filename),
+		Priority: priority,
+	})
+}
+
+// funcValueSignature returns the signature of expr, a funcmap value of a
+// function type, such as a function literal.
+func funcValueSignature(info *types.Info, expr ast.Expr) (*types.Signature, bool) {
+	typ := info.TypeOf(expr)
+	if typ == nil {
+		return nil, false
+	}
+	sig, ok := typ.Underlying().(*types.Signature)
+	return sig, ok
+}
+
+// indexFuncMapEntryValue indexes a funcmap entry whose value is a function
+// literal or another value of a function type, with the value's signature,
+// such as "content": func() template.HTML { ... }. The definition is the
+// entry itself.
+func indexFuncMapEntryValue(root string, fileSet *token.FileSet, pkg *packages.Package, idx *indexFile, funcs *templateFunctionRegistry, funcMapName string, kv *ast.KeyValueExpr, name string, sig *types.Signature, comment *ast.CommentGroup, priority int) {
+	target := virtualPackageTemplateFunctionPath(funcMapName, name)
+	pos := fileSet.Position(kv.Pos())
+	indexReachableTypes(root, fileSet, idx, pkg.Types, sig, nil)
+	results := signatureResults(sig, nil)
+	idx.Funcs[target] = goFuncIndex{
+		Name:      name,
+		Package:   pkg.PkgPath,
+		File:      rel(root, pos.Filename),
+		Line:      pos.Line,
+		Column:    pos.Column,
+		Doc:       stripGoClueSignatureDocs(docText(comment)),
+		Result:    templateValueResultType(results),
+		Results:   results,
+		ReturnOK:  true,
+		Signature: types.TypeString(sig, typeQualifier(pkg.Types)),
+		Params:    signatureParams(sig, nil),
+	}
 	funcs.add(templateFunctionSource{
 		Name:     name,
 		Target:   target,
@@ -1098,7 +1198,8 @@ func ensureFunctionTargetIndexed(root string, fileSet *token.FileSet, pkg *packa
 	if !ok {
 		return
 	}
-	results := signatureResults(sig, pkg.Types)
+	indexReachableTypes(root, fileSet, idx, pkg.Types, sig, nil)
+	results := signatureResults(sig, nil)
 	position := fileSet.Position(fn.Pos())
 	idx.Funcs[fullName] = goFuncIndex{
 		Name:      fn.Name(),
@@ -1110,7 +1211,7 @@ func ensureFunctionTargetIndexed(root string, fileSet *token.FileSet, pkg *packa
 		Results:   results,
 		ReturnOK:  true,
 		Signature: types.TypeString(sig, typeQualifier(pkg.Types)),
-		Params:    signatureParams(sig, pkg.Types),
+		Params:    signatureParams(sig, nil),
 	}
 }
 
@@ -1163,14 +1264,21 @@ func indexPackageTypeDecl(root string, fileSet *token.FileSet, pkg *packages.Pac
 			Methods: make(map[string]methodIndex),
 		}
 		if named, structType := namedStruct(obj.Type()); named != nil && structType != nil {
-			indexed.Fields = exportedTypedFields(root, fileSet, pkg, idx, structType, typeSpec)
+			indexed.Fields = exportedTypedFields(root, fileSet, pkg, idx, named, structType, typeSpec)
 			indexed.Struct = true
+			// Methods of embedded types are promoted; the type's own methods
+			// get their docs from their declarations later.
+			addMethodSet(root, fileSet, idx, pkg.Types, indexed.Methods, types.NewMethodSet(types.NewPointer(named)), nil)
 		} else if iface := namedInterface(obj.Type()); iface != nil {
 			indexed.Fields = map[string]fieldIndex{}
 			indexed.Interface = true
 			addMethodSet(root, fileSet, idx, pkg.Types, indexed.Methods, types.NewMethodSet(obj.Type()), nil)
-		} else {
+		} else if obj.IsAlias() {
 			continue
+		} else {
+			indexed.Fields = map[string]fieldIndex{}
+			indexed.Underlying = typeString(obj.Type().Underlying(), pkg.Types)
+			indexReachableTypes(root, fileSet, idx, pkg.Types, obj.Type().Underlying(), nil)
 		}
 		idx.Types[fullName] = indexed
 		idx.Short[obj.Name()] = append(idx.Short[obj.Name()], fullName)
@@ -1218,7 +1326,9 @@ func indexPackageFuncDecl(root string, fileSet *token.FileSet, pkg *packages.Pac
 		idx.Types[fullTypeName] = typ
 		return
 	}
-	results := signatureResults(sig, pkg.Types)
+	// Functions have no owner type to resolve their types against, so their
+	// parameters and results are stored with full package paths.
+	results := signatureResults(sig, nil)
 	funcDoc := docText(fn.Doc)
 	var signatures []goFuncSignatureIndex
 	if cfg.discoverSignatures() {
@@ -1236,7 +1346,7 @@ func indexPackageFuncDecl(root string, fileSet *token.FileSet, pkg *packages.Pac
 		Results:    results,
 		ReturnOK:   true,
 		Signature:  types.TypeString(sig, typeQualifier(pkg.Types)),
-		Params:     signatureParams(sig, pkg.Types),
+		Params:     signatureParams(sig, nil),
 		Signatures: signatures,
 	}
 }
@@ -1549,7 +1659,7 @@ func receiverNamed(typ types.Type) *types.Named {
 	}
 }
 
-func exportedTypedFields(root string, fileSet *token.FileSet, pkg *packages.Package, idx *indexFile, structType *types.Struct, typeSpec *ast.TypeSpec) map[string]fieldIndex {
+func exportedTypedFields(root string, fileSet *token.FileSet, pkg *packages.Package, idx *indexFile, named *types.Named, structType *types.Struct, typeSpec *ast.TypeSpec) map[string]fieldIndex {
 	metadata := astFieldMetadata(root, fileSet, typeSpec)
 	fields := make(map[string]fieldIndex)
 	for i := range structType.NumFields() {
@@ -1568,7 +1678,77 @@ func exportedTypedFields(root string, fileSet *token.FileSet, pkg *packages.Pack
 		indexReachableTypes(root, fileSet, idx, pkg.Types, field.Type(), nil)
 		fields[field.Name()] = meta
 	}
+
+	for name, field := range promotedFields(named, structType) {
+		if _, ok := fields[name]; ok {
+			continue
+		}
+		fields[name] = promotedFieldIndex(root, fileSet, pkg.Types, field)
+		indexReachableTypes(root, fileSet, idx, pkg.Types, field.Type(), nil)
+	}
+
 	return fields
+}
+
+// promotedFields returns the exported fields named's struct gets from its
+// embedded structs, as Go promotes them: the field at the shallowest depth
+// wins, and a name that two fields share at that depth is left out.
+func promotedFields(named *types.Named, structType *types.Struct) map[string]*types.Var {
+	names := make(map[string]bool)
+	collectEmbeddedFieldNames(structType, names, make(map[*types.Struct]bool), true)
+
+	promoted := make(map[string]*types.Var)
+	for name := range names {
+		obj, index, _ := types.LookupFieldOrMethod(named, true, nil, name)
+		field, ok := obj.(*types.Var)
+		if !ok || !field.IsField() || len(index) < 2 {
+			continue
+		}
+		promoted[name] = field
+	}
+
+	return promoted
+}
+
+// collectEmbeddedFieldNames adds the names of the exported fields of the
+// structs that structType embeds, at any depth, to names. top marks
+// structType itself, whose own fields are not promoted ones.
+func collectEmbeddedFieldNames(structType *types.Struct, names map[string]bool, seen map[*types.Struct]bool, top bool) {
+	if seen[structType] {
+		return
+	}
+	seen[structType] = true
+
+	for i := range structType.NumFields() {
+		field := structType.Field(i)
+		if !top && field.Exported() {
+			names[field.Name()] = true
+		}
+		if !field.Embedded() {
+			continue
+		}
+
+		embedded := field.Type()
+		if pointer, ok := types.Unalias(embedded).(*types.Pointer); ok {
+			embedded = pointer.Elem()
+		}
+		if inner, ok := types.Unalias(embedded).Underlying().(*types.Struct); ok {
+			collectEmbeddedFieldNames(inner, names, seen, false)
+		}
+	}
+}
+
+// promotedFieldIndex is the index entry of a promoted field, with its type
+// relative to current, the package of the struct it is promoted into, and the
+// position of its declaration in the embedded struct.
+func promotedFieldIndex(root string, fileSet *token.FileSet, current *types.Package, field *types.Var) fieldIndex {
+	indexed := fieldIndex{Type: typeString(field.Type(), current)}
+	if position := fileSet.Position(field.Pos()); position.IsValid() && position.Filename != "" {
+		indexed.File = rel(root, position.Filename)
+		indexed.Line = position.Line
+		indexed.Column = position.Column
+	}
+	return indexed
 }
 
 func indexReachableTypes(root string, fileSet *token.FileSet, idx *indexFile, current *types.Package, typ types.Type, seen map[string]bool) {
@@ -1665,6 +1845,9 @@ func indexReachableNamedType(root string, fileSet *token.FileSet, idx *indexFile
 			Interface: types.IsInterface(named),
 			Struct:    isStructType(named),
 		}
+		if !typ.Interface && !typ.Struct {
+			typ.Underlying = typeString(named.Underlying(), current)
+		}
 		if typ.Fields == nil {
 			typ.Fields = make(map[string]fieldIndex)
 		}
@@ -1691,16 +1874,18 @@ func exportedExternalFields(root string, fileSet *token.FileSet, idx *indexFile,
 		if !field.Exported() {
 			continue
 		}
-		fieldType := typeString(field.Type(), current)
-		indexed := fieldIndex{Type: fieldType}
-		if position := fileSet.Position(field.Pos()); position.IsValid() && position.Filename != "" {
-			indexed.File = rel(root, position.Filename)
-			indexed.Line = position.Line
-			indexed.Column = position.Column
-		}
-		fields[field.Name()] = indexed
+		fields[field.Name()] = promotedFieldIndex(root, fileSet, current, field)
 		indexReachableTypes(root, fileSet, idx, current, field.Type(), seen)
 	}
+
+	for name, field := range promotedFields(named, structType) {
+		if _, ok := fields[name]; ok {
+			continue
+		}
+		fields[name] = promotedFieldIndex(root, fileSet, current, field)
+		indexReachableTypes(root, fileSet, idx, current, field.Type(), seen)
+	}
+
 	return fields
 }
 
@@ -1929,11 +2114,22 @@ func defineContractText(src string, defineStart, bodyStart, bodyEnd int) string 
 	if hasContractAnnotations(body) {
 		return body
 	}
-	prefix := src[:defineStart]
-	if match := leadingTemplateCommentPattern.FindString(prefix); match != "" {
-		return match + "\n" + body
+	if comment, ok := leadingTemplateComment(src, defineStart); ok {
+		return comment + "\n" + body
 	}
 	return body
+}
+
+// leadingTemplateComment returns the template comments right above offset,
+// such as the comments above a {{define}}: those that only whitespace
+// separates from offset and from each other.
+func leadingTemplateComment(src string, offset int) (string, bool) {
+	actions := append(templateActions(src[:offset]), templateAction{start: offset, end: offset})
+	comments := leadingComments(src, actions, len(actions)-1)
+	if len(comments) == 0 {
+		return "", false
+	}
+	return src[comments[0].start:comments[len(comments)-1].end], true
 }
 
 func hasContractAnnotations(src string) bool {
@@ -2106,14 +2302,17 @@ func virtualPackageTemplateFunctionPath(pkgPath, name string) string {
 	return "$go-clue/templatefunc." + pkgPath + "." + name
 }
 
+// contractScanText returns the bodies of the template comments of src, where
+// go-clue reads annotations, one after the other. Text without comments is
+// returned as it is.
 func contractScanText(src string) string {
-	matches := templateCommentPattern.FindAllStringSubmatch(src, -1)
-	if len(matches) == 0 {
+	comments := templateComments(src)
+	if len(comments) == 0 {
 		return src
 	}
 	var out strings.Builder
-	for _, match := range matches {
-		body := strings.TrimSpace(match[1])
+	for _, comment := range comments {
+		body := strings.TrimSpace(src[comment.bodyStart:comment.bodyEnd])
 		if body == "" {
 			continue
 		}
@@ -2336,21 +2535,44 @@ func rel(root, path string) string {
 }
 
 func loadIndexConfig(root string) indexConfig {
-	cfg := defaultIndexConfig()
 	data, err := os.ReadFile(filepath.Join(root, ".go-clue", "config.json"))
 	if errors.Is(err, os.ErrNotExist) {
 		data, err = os.ReadFile(filepath.Join(root, ".go-doc", "config.json"))
 	}
 	if err != nil {
-		return cfg
-	}
-	if err := json.Unmarshal(data, &cfg); err != nil {
 		return defaultIndexConfig()
+	}
+	cfg, err := parseIndexConfig(data)
+	if err != nil {
+		return defaultIndexConfig()
+	}
+	return cfg
+}
+
+// loadIndexConfigFile reads the configuration in the file at path, which
+// unlike a project's own configuration must exist and be valid.
+func loadIndexConfigFile(path string) (indexConfig, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return indexConfig{}, err
+	}
+	cfg, err := parseIndexConfig(data)
+	if err != nil {
+		return indexConfig{}, fmt.Errorf("go-clue: %s: %w", path, err)
+	}
+	return cfg, nil
+}
+
+// parseIndexConfig parses a configuration, on top of the defaults.
+func parseIndexConfig(data []byte) (indexConfig, error) {
+	cfg := defaultIndexConfig()
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		return indexConfig{}, err
 	}
 	if len(cfg.Include) == 0 {
 		cfg.Include = defaultIndexConfig().Include
 	}
-	return cfg
+	return cfg, nil
 }
 
 func defaultIndexConfig() indexConfig {

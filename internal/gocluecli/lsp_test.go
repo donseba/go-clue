@@ -1838,7 +1838,7 @@ type Todo struct {
 }
 `)
 	idx := indexFile{
-		Version: 2,
+		Version: indexVersion,
 		Module:  "example.com/app",
 		Templates: map[string]templateIndex{
 			"todo.gohtml": {
@@ -1953,7 +1953,7 @@ func TestLSPCodeActionCreatesMissingModel(t *testing.T) {
 	writeTestFile(t, filepath.Join(root, "go.mod"), "module example.com/app\n")
 	writeTestFile(t, filepath.Join(root, "handler.go"), "package app\n")
 	idx := indexFile{
-		Version:   2,
+		Version:   indexVersion,
 		Module:    "example.com/app",
 		Templates: map[string]templateIndex{},
 		Types:     map[string]goTypeIndex{},
@@ -2337,7 +2337,7 @@ func TestLSPIndexForURIUsesNearestNestedIndex(t *testing.T) {
 	writeTestFile(t, filepath.Join(nested, ".go-clue", "config.json"), `{"writeIndex": true}`)
 	writeTestFile(t, filepath.Join(nested, "templates", "main.gohtml"), "")
 	if err := writeJSON(indexFile{
-		Version: 2,
+		Version: indexVersion,
 		Module:  "github.com/donseba/go-clue/examples/todo",
 		Templates: map[string]templateIndex{
 			"templates/main.gohtml": {
@@ -2379,7 +2379,7 @@ func TestLSPDiagnosticsUseNestedIndexForDocument(t *testing.T) {
 	writeTestFile(t, filepath.Join(nested, ".go-clue", "config.json"), `{"writeIndex": true}`)
 	writeTestFile(t, templatePath, text)
 	if err := writeJSON(indexFile{
-		Version: 2,
+		Version: indexVersion,
 		Module:  "github.com/donseba/go-clue/examples/todo",
 		Templates: map[string]templateIndex{
 			"templates/main.gohtml": {
@@ -2429,7 +2429,7 @@ type Todo struct {
 `)
 	writeTestFile(t, templatePath, text)
 	if err := writeJSON(indexFile{
-		Version: 2,
+		Version: indexVersion,
 		Module:  "example.com/app",
 		Templates: map[string]templateIndex{
 			"templates/todo.gohtml": {
@@ -2908,7 +2908,8 @@ func TestLSPRefreshIndexReloadsGeneratedFile(t *testing.T) {
 	if err := os.MkdirAll(filepath.Dir(indexPath), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(indexPath, []byte(`{
+	if err := os.WriteFile(indexPath, []byte(fmt.Sprintf(`{
+		"version": %d,
 		"module": "example.com/app",
 		"templates": {
 			"page.gohtml": {
@@ -2921,7 +2922,7 @@ func TestLSPRefreshIndexReloadsGeneratedFile(t *testing.T) {
 				"fields": {"Title": {"type": "string"}}
 			}
 		}
-	}`), 0o644); err != nil {
+	}`, indexVersion)), 0o644); err != nil {
 		t.Fatal(err)
 	}
 

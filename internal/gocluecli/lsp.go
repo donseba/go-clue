@@ -292,6 +292,7 @@ const (
 	lspDiagnosticsKey = "diagnostics"
 	lspQuickFixKind   = "quickfix"
 	lspShutdownMethod = "shutdown"
+	lspExitMethod     = "exit"
 
 	rpcContentFormat = "Content-Length: %d\r\n\r\n%s"
 
@@ -308,23 +309,23 @@ const (
 	missingFieldAppliedCodeActionTitle = "Add missing field"
 )
 
+// errExitWithoutShutdown reports an exit notification that came before a
+// shutdown request.
+var errExitWithoutShutdown = errors.New("go-clue lsp: exit without a shutdown request")
+
 var (
-	lspRangePattern                = regexp.MustCompile(`\{\{\s*-?\s*(range|with|end)\b([^}]*)\}\}`)
-	lspScopeActionPattern          = regexp.MustCompile(`\{\{\s*-?\s*([^}]*)\}\}`)
-	lspAssignmentPattern           = regexp.MustCompile(`^\s*(\$[A-Za-z][A-Za-z0-9_]*)\s*:=\s*(.+?)\s*$`)
-	lspActionPattern               = regexp.MustCompile(`\{\{[^}]*\}\}`)
-	lspAccessorPattern             = regexp.MustCompile(`(?:[$_A-Za-z][$_A-Za-z0-9]*(?:\.[A-Za-z][A-Za-z0-9_]*)+|\.[A-Za-z][A-Za-z0-9_]*(?:\.[A-Za-z][A-Za-z0-9_]*)*)`)
-	lspVariablePattern             = regexp.MustCompile(`\$[A-Za-z_][A-Za-z0-9_]*`)
-	lspTemplateCallRegexp          = regexp.MustCompile(`^\s*(?:template|block)\s+"([^"]+)"(?:\s+(.+?))?\s*-?\s*$`)
-	lspDefineActionRegexp          = regexp.MustCompile(`^\s*define\s+"([^"]+)"\s*$`)
-	lspLeadingDefineContractRegexp = regexp.MustCompile(`(?s)(\{\{/\*.*?@(model|dot|func|gen|symbol).*?\*/\}\})([ \t\r\n]*)(\{\{\s*(?:-)?\s*define\s+"([^"]+)"\s*(?:-)?\s*\}\})`)
-	lspTypePrefixRegexp            = regexp.MustCompile(`@[A-Za-z_][A-Za-z0-9_]*\s+[A-Za-z_][A-Za-z0-9_]*\s+[A-Za-z0-9_./\[\]*-]*$`)
-	lspFuncPrefixRegexp            = regexp.MustCompile(`@func\s+[A-Za-z_][A-Za-z0-9_]*\s+[A-Za-z0-9_./-]*$`)
-	lspAnnotationPrefixRegexp      = regexp.MustCompile(`@\w*$`)
-	lspDotTypeRegexp               = regexp.MustCompile(`@dot\s+([A-Za-z0-9_./-]+)`)
-	lspFuncTypeRegexp              = regexp.MustCompile(`@func\s+[A-Za-z_][A-Za-z0-9_]*\s+([A-Za-z0-9_./-]+)`)
-	lspFuncDeclarationRegexp       = regexp.MustCompile(`@func\s+([A-Za-z_][A-Za-z0-9_]*)\s+([A-Za-z0-9_./-]+)`)
-	lspUnknownShorthandRegexp      = regexp.MustCompile(`(?m)^\s*@([A-Za-z_][A-Za-z0-9_]*)\s+([A-Za-z_][A-Za-z0-9_./\[\]*-]*)\s*$`)
+	lspAssignmentPattern      = regexp.MustCompile(`^\s*(\$[A-Za-z][A-Za-z0-9_]*)\s*:=\s*(.+?)\s*$`)
+	lspAccessorPattern        = regexp.MustCompile(`(?:[$_A-Za-z][$_A-Za-z0-9]*(?:\.[A-Za-z][A-Za-z0-9_]*)+|\.[A-Za-z][A-Za-z0-9_]*(?:\.[A-Za-z][A-Za-z0-9_]*)*)`)
+	lspVariablePattern        = regexp.MustCompile(`\$[A-Za-z_][A-Za-z0-9_]*`)
+	lspTemplateCallRegexp     = regexp.MustCompile(`^\s*(?:template|block)\s+"([^"]+)"(?:\s+(.+?))?\s*-?\s*$`)
+	lspDefineActionRegexp     = regexp.MustCompile(`^\s*define\s+"([^"]+)"\s*$`)
+	lspTypePrefixRegexp       = regexp.MustCompile(`@[A-Za-z_][A-Za-z0-9_]*\s+[A-Za-z_][A-Za-z0-9_]*\s+[A-Za-z0-9_./\[\]*-]*$`)
+	lspFuncPrefixRegexp       = regexp.MustCompile(`@func\s+[A-Za-z_][A-Za-z0-9_]*\s+[A-Za-z0-9_./-]*$`)
+	lspAnnotationPrefixRegexp = regexp.MustCompile(`@\w*$`)
+	lspDotTypeRegexp          = regexp.MustCompile(`@dot\s+([A-Za-z0-9_./-]+)`)
+	lspFuncTypeRegexp         = regexp.MustCompile(`@func\s+[A-Za-z_][A-Za-z0-9_]*\s+([A-Za-z0-9_./-]+)`)
+	lspFuncDeclarationRegexp  = regexp.MustCompile(`@func\s+([A-Za-z_][A-Za-z0-9_]*)\s+([A-Za-z0-9_./-]+)`)
+	lspUnknownShorthandRegexp = regexp.MustCompile(`(?m)^\s*@([A-Za-z_][A-Za-z0-9_]*)\s+([A-Za-z_][A-Za-z0-9_./\[\]*-]*)\s*$`)
 )
 
 type templateFuncInfo struct {
@@ -354,15 +355,29 @@ var builtInTemplateFuncs = map[string]templateFuncInfo{
 	"ge":       {Signature: "ge x y bool", Doc: "Reports whether x is greater than or equal to y."},
 }
 
-func runLSP(input io.Reader, output io.Writer, root string) error {
-	absRoot, err := filepath.Abs(root)
+// runLSP serves the language server on input and output and writes its log to
+// logs. Every template is checked in the module of the go.mod nearest to it
+// (indexForURI); the index of the root module is only the fallback for the
+// others. A root in no module therefore starts with an empty index.
+func runLSP(input io.Reader, output io.Writer, logs io.Writer, root string) error {
+	absRoot, err := lspRoot(root, logs)
 	if err != nil {
 		return err
 	}
-	idx, indexPath, indexMTime, err := loadOrBuildIndex(absRoot)
-	if err != nil {
-		return err
+
+	var (
+		idx        = emptyIndexFile()
+		indexPath  string
+		indexMTime time.Time
+	)
+
+	if fileExists(filepath.Join(absRoot, "go.mod")) {
+		idx, indexPath, indexMTime, err = loadOrBuildIndex(absRoot)
+		if err != nil {
+			return err
+		}
 	}
+
 	server := &lspServer{
 		in:         bufio.NewReader(input),
 		out:        output,
@@ -376,6 +391,42 @@ func runLSP(input io.Reader, output io.Writer, root string) error {
 	return server.serve()
 }
 
+// lspRoot returns the root module of the language server: root when it has a
+// go.mod, or else the nearest go.mod above it, like `go-clue check` finds the
+// module of a path. A root in no module, such as the parent folder of several
+// modules, stays the root, and the log says so.
+func lspRoot(root string, logs io.Writer) (string, error) {
+	absRoot, err := filepath.Abs(root)
+	if err != nil {
+		return "", err
+	}
+
+	if fileExists(filepath.Join(absRoot, "go.mod")) {
+		return absRoot, nil
+	}
+
+	if module := nearestModuleRoot(absRoot); module != "" {
+		_, _ = fmt.Fprintf(logs, "go-clue lsp: %s has no go.mod; using the module at %s\n", absRoot, module)
+
+		return module, nil
+	}
+
+	_, _ = fmt.Fprintf(logs, "go-clue lsp: no go.mod in or above %s; templates use the module of the go.mod nearest to them, and templates in no module get no Go types\n", absRoot)
+
+	return absRoot, nil
+}
+
+// emptyIndexFile returns an index without templates or types.
+func emptyIndexFile() indexFile {
+	return indexFile{
+		Version:   indexVersion,
+		Templates: map[string]templateIndex{},
+		Types:     map[string]goTypeIndex{},
+		Funcs:     map[string]goFuncIndex{},
+		Short:     map[string][]string{},
+	}
+}
+
 func (s *lspServer) serve() error {
 	for {
 		msg, err := readRPCMessage(s.in)
@@ -385,6 +436,10 @@ func (s *lspServer) serve() error {
 		if err != nil {
 			return err
 		}
+		if len(msg.ID) == 0 && msg.Method == lspExitMethod {
+			return s.exit()
+		}
+
 		if len(msg.ID) == 0 {
 			if err := s.handleNotification(msg); err != nil {
 				return err
@@ -402,6 +457,16 @@ func (s *lspServer) serve() error {
 			s.shutdown = true
 		}
 	}
+}
+
+// exit ends the server on the exit notification. Like the protocol asks, the
+// server ends with 0 after a shutdown request and with 1 without one.
+func (s *lspServer) exit() error {
+	if s.shutdown {
+		return nil
+	}
+
+	return exitCodeError{code: 1, err: errExitWithoutShutdown}
 }
 
 func (s *lspServer) handleRequest(msg rpcMessage) (any, *rpcError) {
@@ -492,8 +557,6 @@ func (s *lspServer) handleRequest(msg rpcMessage) (any, *rpcError) {
 func (s *lspServer) handleNotification(msg rpcMessage) error {
 	s.refreshWorkspaceState()
 	switch msg.Method {
-	case "exit":
-		return io.EOF
 	case "initialized":
 		return nil
 	case "textDocument/didOpen":
@@ -727,7 +790,7 @@ func applyTextChange(current string, rng *lspRange, replacement string) string {
 func loadOrBuildIndex(root string) (indexFile, string, time.Time, error) {
 	cfg := loadIndexConfig(root)
 	if !cfg.enabled() {
-		return indexFile{Version: 2, Templates: map[string]templateIndex{}, Types: map[string]goTypeIndex{}, Funcs: map[string]goFuncIndex{}, Short: map[string][]string{}}, "", time.Time{}, nil
+		return emptyIndexFile(), "", time.Time{}, nil
 	}
 	path := filepath.Join(root, goClueDir, indexFileName)
 	if cfg.WriteIndex {
@@ -745,7 +808,15 @@ func loadOrBuildIndex(root string) (indexFile, string, time.Time, error) {
 			if stat != nil {
 				mtime = stat.ModTime()
 			}
-			return idx, path, mtime, nil
+
+			// An index file of another go-clue version would be misread, so
+			// the index is built in memory. The file is still watched, for
+			// when it is written again.
+			if idx.Version != indexVersion {
+				idx, _, err = buildTemplateIndex(root)
+			}
+
+			return idx, path, mtime, err
 		}
 	}
 	idx, _, err := buildTemplateIndex(root)
@@ -779,6 +850,15 @@ func (s *lspServer) refreshIndex() bool {
 	if err := json.Unmarshal(data, &idx); err != nil {
 		return false
 	}
+
+	// An index file of another go-clue version would be misread; the index
+	// in memory stays.
+	if idx.Version != indexVersion {
+		s.indexMTime = stat.ModTime()
+
+		return false
+	}
+
 	s.idx = idx
 	s.indexMTime = stat.ModTime()
 	return true
@@ -844,7 +924,7 @@ func (s *lspServer) loadIndexForRoot(root string) (lspIndex, bool) {
 	}
 	cfg := loadIndexConfig(root)
 	if !cfg.enabled() {
-		return lspIndex{indexFile: indexFile{Version: 2, Templates: map[string]templateIndex{}, Types: map[string]goTypeIndex{}, Funcs: map[string]goFuncIndex{}, Short: map[string][]string{}}, rootPath: root}, true
+		return lspIndex{indexFile: emptyIndexFile(), rootPath: root}, true
 	}
 	indexPath := filepath.Join(root, goClueDir, indexFileName)
 	sourceMTime := latestSourceModTime(root)
@@ -877,6 +957,17 @@ func (s *lspServer) loadIndexForRoot(root string) (lspIndex, bool) {
 		if err := json.Unmarshal(data, &idx); err != nil {
 			return lspIndex{}, false
 		}
+
+		// An index file of another go-clue version would be misread, so the
+		// index is built in memory, and kept until the file or the source
+		// changes.
+		if idx.Version != indexVersion {
+			idx, _, err = buildTemplateIndex(root)
+			if err != nil {
+				return lspIndex{}, false
+			}
+		}
+
 		s.indexes[root] = cachedLSPIndex{idx: idx, path: indexPath, root: root, mtime: stat.ModTime(), sourceMTime: sourceMTime}
 		return lspIndex{indexFile: idx, rootPath: root}, true
 	}
@@ -992,8 +1083,16 @@ func (s *lspServer) contractForURIAt(uri string, idx lspIndex, offset int) (temp
 	if err != nil {
 		return templateIndex{}, false
 	}
-	relative := rel(idx.rootPath, path)
 	text, _ := s.documentText(uri)
+	return contractForPathAt(path, text, idx, offset)
+}
+
+// contractForPathAt returns the contract of the template at path, whose
+// content is text, at offset, or for the whole file when offset is negative.
+// A template the index does not hold, such as one outside the project, gets
+// the contract of its own annotations and the project's functions.
+func contractForPathAt(path, text string, idx lspIndex, offset int) (templateIndex, bool) {
+	relative := rel(idx.rootPath, path)
 	if contract, ok := idx.Templates[relative]; ok {
 		contract = mergeInlineContract(text, idx, contract)
 		return activeContractAt(text, idx, relative, contract, offset), true
@@ -1017,27 +1116,30 @@ func activeContractAt(text string, idx lspIndex, relative string, base templateI
 	if name == "" {
 		return base
 	}
-	if contract, ok := templateContractForDefine(idx, relative, name); ok {
+	if contract, ok := templateContractForDefine(text, idx, relative, name); ok {
 		return mergeInlineContract(text, idx, contract)
 	}
 	return base
 }
 
-func templateContractForDefine(idx lspIndex, relative, name string) (templateIndex, bool) {
+// templateContractForDefine returns the contract of the define name in the
+// template at relative, whose content is text: the index's, or the one its
+// own annotations declare when the index does not hold the template. A define
+// without a contract of its own has none, so the file's contract applies.
+func templateContractForDefine(text string, idx lspIndex, relative, name string) (templateIndex, bool) {
 	normalized := filepath.ToSlash(relative)
 	for _, contract := range idx.Templates {
 		if contract.Name == name && filepath.ToSlash(contract.Source) == normalized {
 			return contract, true
 		}
 	}
-	contract, _, ok := templateContractByName(idx, name)
-	return contract, ok
+	return inlineDefineContractByName(text, idx, name, normalized)
 }
 
 func activeDefineNameAt(text string, offset int) string {
 	offset = max(0, min(offset, len(text)))
 	var stack []string
-	for _, action := range lspActionPattern.FindAllStringIndex(text[:offset], -1) {
+	for _, action := range templateActionIndexes(text[:offset]) {
 		actionText := text[action[0]:action[1]]
 		if isTemplateCommentAction(actionText) {
 			continue
@@ -1072,13 +1174,18 @@ func mergeInlineContract(text string, idx lspIndex, base templateIndex) template
 	text = contractScanText(contractAnnotationText(text, base))
 	inlineRoots := parseTypedRootMap(text, indexConfig{SymbolAnnotations: symbolAnnotationsFromAliases(idx.SymbolAliases), SymbolStrict: idx.SymbolStrict})
 	roots := make(map[string]string, len(base.Roots)+len(inlineRoots))
-	funcs := make(map[string]string, len(base.Funcs))
+	funcs := make(map[string]string, len(idx.Functions)+len(base.Funcs))
 	gens := make(map[string]string, len(base.Gens))
 	dot := base.Dot
 	if len(inlineRoots) == 0 {
 		for key, value := range base.Roots {
 			roots[key] = value
 		}
+	}
+	// The project's functions are there in every template, also in one the
+	// index does not hold.
+	for key, value := range idx.Functions {
+		funcs[key] = value
 	}
 	for key, value := range base.Funcs {
 		funcs[key] = value
@@ -1183,7 +1290,7 @@ func defineBlocks(text string) []defineBlock {
 	}
 	var stack []openDefine
 	var blocks []defineBlock
-	for _, action := range lspActionPattern.FindAllStringIndex(text, -1) {
+	for _, action := range templateActionIndexes(text) {
 		actionText := text[action[0]:action[1]]
 		if isTemplateCommentAction(actionText) {
 			continue
@@ -1226,20 +1333,29 @@ func (s *lspServer) publishDiagnostics(uri string) error {
 	if !ok {
 		return nil
 	}
-	idx := s.indexForURI(uri)
-	contract, ok := s.contractForURI(uri, idx)
-	if !ok && !hasGoClueAnnotation(text) {
+	path, err := pathFromURI(uri)
+	if err != nil {
 		return s.clearDiagnostics(uri)
 	}
-	relative := ""
-	if path, err := pathFromURI(uri); err == nil {
-		relative = rel(idx.rootPath, path)
+	items, ok := documentDiagnostics(path, text, s.indexForURI(uri))
+	if !ok {
+		return s.clearDiagnostics(uri)
 	}
-	items := diagnosticsForTextScoped(text, idx, contract, relative)
 	if items == nil {
 		items = []diagnostic{}
 	}
 	return writeRPCNotification(s.out, lspMethodPublishDiagnostics, map[string]any{"uri": uri, lspDiagnosticsKey: items})
+}
+
+// documentDiagnostics returns go-clue's diagnostics for the template at path,
+// whose content is text. It reports false for a template go-clue has nothing
+// to check in: no contract, no annotations and no project functions.
+func documentDiagnostics(path, text string, idx lspIndex) ([]diagnostic, bool) {
+	contract, ok := contractForPathAt(path, text, idx, -1)
+	if !ok && !hasGoClueAnnotation(text) {
+		return nil, false
+	}
+	return diagnosticsForTextScoped(text, idx, contract, rel(idx.rootPath, path)), true
 }
 
 func hasGoClueAnnotation(text string) bool {
@@ -1260,7 +1376,7 @@ func diagnosticsForTextScoped(text string, idx lspIndex, contract templateIndex,
 	items = append(items, unknownShorthandDiagnostics(text, idx.symbolParseConfig())...)
 	items = append(items, typedRootCollisionDiagnostics(text, contract, idx.symbolParseConfig())...)
 	items = append(items, unusedNamedDeclarationDiagnostics(text, idx, contract, relative)...)
-	for _, match := range lspDotTypeRegexp.FindAllStringSubmatchIndex(text, -1) {
+	for _, match := range lspDotTypeRegexp.FindAllStringSubmatchIndex(annotationScanText(text), -1) {
 		start, end := match[2], match[3]
 		raw := text[start:end]
 		typeName := normalizeType(raw)
@@ -1277,7 +1393,7 @@ func diagnosticsForTextScoped(text string, idx lspIndex, contract templateIndex,
 			Message:  fmt.Sprintf("Unknown go-clue dot type '%s'", raw),
 		})
 	}
-	for _, match := range lspFuncTypeRegexp.FindAllStringSubmatchIndex(text, -1) {
+	for _, match := range lspFuncTypeRegexp.FindAllStringSubmatchIndex(annotationScanText(text), -1) {
 		start, end := match[2], match[3]
 		raw := text[start:end]
 		funcName := normalizeType(raw)
@@ -1324,24 +1440,32 @@ func diagnosticsForTextScoped(text string, idx lspIndex, contract templateIndex,
 			})
 		}
 	}
-	for _, match := range lspRangePattern.FindAllStringSubmatchIndex(text, -1) {
-		if text[match[2]:match[3]] != "range" {
+	for _, action := range templateActions(text) {
+		if action.comment {
 			continue
 		}
-		actionContract := activeContractAt(text, idx, relative, contract, match[0])
-		expression := strings.TrimSpace(text[match[4]:match[5]])
+
+		content, contentOffset, ok := actionContent(text[action.start:action.end])
+		if !ok || actionKeyword(content) != "range" {
+			continue
+		}
+
+		expressionStart := action.start + contentOffset + len("range")
+		expressionEnd := action.start + contentOffset + len(content)
+		actionContract := activeContractAt(text, idx, relative, contract, action.start)
+		expression := strings.TrimSpace(text[expressionStart:expressionEnd])
 		source := sourceExpression(expression)
 		sourceType := resolveExpressionValueType(idx, actionContract, source, "")
-		if sourceType != "" && !isRangeable(sourceType) {
+		if sourceType != "" && !isRangeable(underlyingValueType(idx, sourceType)) {
 			items = append(items, diagnostic{
-				Range:    rangeFromOffsets(text, match[4], match[5]),
+				Range:    rangeFromOffsets(text, expressionStart, expressionEnd),
 				Severity: 2,
 				Source:   lspSource,
 				Message:  fmt.Sprintf("Cannot range over '%s' because it is %s", source, sourceType),
 			})
 		}
 	}
-	for _, action := range lspActionPattern.FindAllStringIndex(text, -1) {
+	for _, action := range templateActionIndexes(text) {
 		actionText := text[action[0]:action[1]]
 		if isTemplateCommentAction(actionText) {
 			continue
@@ -1405,6 +1529,7 @@ func diagnosticsForTextScoped(text string, idx lspIndex, contract templateIndex,
 			})
 		}
 	}
+	items = append(items, unknownFunctionDiagnostics(text, idx, contract, relative)...)
 	return items
 }
 
@@ -1474,7 +1599,7 @@ func unusedNamedDeclarationDiagnostics(text string, idx lspIndex, contract templ
 func usedNamedDeclarations(text string, idx lspIndex, contract templateIndex, relative string) (map[string]bool, map[string]bool) {
 	usedRoots := make(map[string]bool)
 	usedFuncs := make(map[string]bool)
-	for _, action := range lspActionPattern.FindAllStringIndex(text, -1) {
+	for _, action := range templateActionIndexes(text) {
 		actionText := text[action[0]:action[1]]
 		if isTemplateCommentAction(actionText) {
 			continue
@@ -1509,7 +1634,7 @@ type funcDeclRef struct {
 
 func funcDeclarationRefs(text string) []funcDeclRef {
 	var refs []funcDeclRef
-	for _, match := range lspFuncDeclarationRegexp.FindAllStringSubmatchIndex(text, -1) {
+	for _, match := range lspFuncDeclarationRegexp.FindAllStringSubmatchIndex(annotationScanText(text), -1) {
 		refs = append(refs, funcDeclRef{
 			name:      text[match[2]:match[3]],
 			nameStart: match[2],
@@ -1521,7 +1646,7 @@ func funcDeclarationRefs(text string) []funcDeclRef {
 
 func unknownShorthandDiagnostics(text string, symbols symbolParseConfig) []diagnostic {
 	var items []diagnostic
-	for _, match := range lspUnknownShorthandRegexp.FindAllStringSubmatchIndex(text, -1) {
+	for _, match := range lspUnknownShorthandRegexp.FindAllStringSubmatchIndex(annotationScanText(text), -1) {
 		annotation := text[match[2]:match[3]]
 		value := text[match[4]:match[5]]
 		if reservedContractAnnotation(annotation) {
@@ -1549,14 +1674,12 @@ func looksLikeTypePath(value string) bool {
 
 func leadingDefineContractDiagnostics(text string) []diagnostic {
 	var items []diagnostic
-	for _, match := range lspLeadingDefineContractRegexp.FindAllStringSubmatchIndex(text, -1) {
-		commentStart, commentEnd := match[2], match[3]
-		name := text[match[10]:match[11]]
+	for _, contract := range leadingDefineContracts(text) {
 		items = append(items, diagnostic{
-			Range:    rangeFromOffsets(text, commentStart, commentEnd),
+			Range:    rangeFromOffsets(text, contract.commentStart, contract.commentEnd),
 			Severity: 3,
 			Source:   lspSource,
-			Message:  fmt.Sprintf(moveDefineAnnotationsFormat, name),
+			Message:  fmt.Sprintf(moveDefineAnnotationsFormat, contract.name),
 		})
 	}
 	return items
@@ -1609,7 +1732,7 @@ func templateIncludeDiagnosticForAction(text string, actionStart int, actionText
 	if expected == "" {
 		expected = child.Dot
 	}
-	if actual == "" || expected == "" || sameTemplateDotType(idx, actual, expected) {
+	if actual == "" || expected == "" || isAnyType(actual) || sameTemplateDotType(idx, actual, expected) {
 		return diagnostic{}, false
 	}
 	return diagnostic{
@@ -1663,7 +1786,7 @@ func inlineDefineContractByName(text string, idx lspIndex, name, source string) 
 		if block.name != name {
 			continue
 		}
-		body := text[block.bodyStart:block.bodyEnd]
+		body := defineContractText(text, block.start, block.bodyStart, block.bodyEnd)
 		roots := parseTypedRootMap(body, indexConfig{SymbolAnnotations: symbolAnnotationsFromAliases(idx.SymbolAliases), SymbolStrict: idx.SymbolStrict})
 		dot := parseDot(body)
 		funcs := parseFuncs(body)
@@ -1783,7 +1906,7 @@ type templateIncludeRef struct {
 }
 
 func templateIncludeReferenceAt(text string, offset int, idx lspIndex, relative string) (templateIncludeRef, bool) {
-	for _, action := range lspActionPattern.FindAllStringIndex(text, -1) {
+	for _, action := range templateActionIndexes(text) {
 		if offset < action[0] || offset > action[1] {
 			continue
 		}
@@ -1859,7 +1982,7 @@ func lenDiagnosticForAction(text string, actionStart int, actionText string, idx
 	}
 	expressionStart := actionStart + argStart + leading
 	valueType := resolveExpressionValueType(idx, contract, expression, dotType)
-	if valueType == "" || isLenable(valueType) {
+	if valueType == "" || isLenable(underlyingValueType(idx, valueType)) {
 		return diagnostic{}, false
 	}
 	return diagnostic{
@@ -1941,7 +2064,13 @@ func methodArgumentDiagnosticForAction(text string, actionStart int, actionText 
 		if !ok {
 			continue
 		}
-		fn := goFuncIndex{Name: ref.fieldName, Params: method.Params, Result: method.Type, ReturnOK: true}
+		fn := goFuncIndex{
+			Name:      ref.fieldName,
+			Signature: method.Signature,
+			Params:    qualifyMemberParams(idx, owner, method.Params),
+			Result:    method.Type,
+			ReturnOK:  true,
+		}
 		if item, ok := functionArgumentDiagnostic(text, actionStart, ref.fieldName, match[1], fn, args, idx, contract, dotType); ok {
 			return item, true
 		}
@@ -2031,6 +2160,9 @@ func functionArgumentDiagnostic(text string, actionStart int, name string, funct
 }
 
 func functionArgumentDiagnosticSingle(text string, actionStart int, name string, functionEnd int, fn goFuncIndex, args []templateArg, idx lspIndex, contract templateIndex, dotType string) (diagnostic, bool) {
+	if !hasKnownSignature(fn) {
+		return diagnostic{}, false
+	}
 	if item, ok := functionArityDiagnostic(text, actionStart, name, functionEnd, fn, args); ok {
 		return item, true
 	}
@@ -2218,7 +2350,17 @@ func functionArityDiagnostic(text string, actionStart int, name string, function
 	return diagnostic{}, false
 }
 
+// hasKnownSignature reports whether go-clue knows how fn is called. A function
+// declared by name only, such as a templateFunctions entry without a path or
+// signatures, is known to exist but is not checked.
+func hasKnownSignature(fn goFuncIndex) bool {
+	return fn.Signature != "" || len(fn.Signatures) > 0 || len(fn.Params) > 0 || fn.ReturnOK
+}
+
 func functionArityDiagnosticForCount(text string, start, end int, name string, fn goFuncIndex, argCount int) (diagnostic, bool) {
+	if !hasKnownSignature(fn) {
+		return diagnostic{}, false
+	}
 	minArgs, maxArgs := functionArgBounds(fn)
 	if argCount >= minArgs && (maxArgs < 0 || argCount <= maxArgs) {
 		return diagnostic{}, false
@@ -2447,7 +2589,9 @@ func isIntegerLiteral(value string) bool {
 func argumentAssignable(idx lspIndex, expected, actual string) bool {
 	expected = normalizeComparableType(expected)
 	actual = normalizeComparableType(actual)
-	if expected == actual || expected == "any" || expected == "interface{}" {
+	// An any value holds whatever it was given, which only shows when the
+	// template runs, so it can be passed anywhere.
+	if expected == actual || isAnyType(expected) || isAnyType(actual) {
 		return true
 	}
 	resolvedExpected := resolveGoType(idx, expected)
@@ -2479,6 +2623,16 @@ func implementsInterface(idx lspIndex, expected, actual string) bool {
 		}
 	}
 	return true
+}
+
+// isAnyType reports whether typeExpr is the empty interface, any.
+func isAnyType(typeExpr string) bool {
+	switch strings.TrimSpace(typeExpr) {
+	case "any", "interface{}", "interface {}":
+		return true
+	default:
+		return false
+	}
 }
 
 func normalizeComparableType(value string) string {
@@ -3079,13 +3233,13 @@ func (s *lspServer) codeActions(params codeActionParams) []codeAction {
 
 func moveDefineContractCodeAction(uri string, text string, item diagnostic) (codeAction, bool) {
 	warningOffset := offsetAt(text, item.Range.Start)
-	for _, match := range lspLeadingDefineContractRegexp.FindAllStringSubmatchIndex(text, -1) {
-		commentStart, commentEnd := match[2], match[3]
+	for _, contract := range leadingDefineContracts(text) {
+		commentStart, commentEnd := contract.commentStart, contract.commentEnd
 		if warningOffset < commentStart || warningOffset > commentEnd {
 			continue
 		}
-		removeEnd := match[8]
-		defineEnd := match[9]
+		removeEnd := contract.removeEnd
+		defineEnd := contract.defineEnd
 		comment := compactContractComment(strings.TrimSpace(text[commentStart:commentEnd]))
 		newText := "\n" + comment + "\n"
 		return codeAction{
@@ -3385,7 +3539,7 @@ func semanticTokensForTextScoped(text string, idx lspIndex, contract templateInd
 			}
 		}
 	}
-	for _, match := range lspDotTypeRegexp.FindAllStringSubmatchIndex(text, -1) {
+	for _, match := range lspDotTypeRegexp.FindAllStringSubmatchIndex(annotationScanText(text), -1) {
 		start, end := match[2], match[3]
 		raw := text[start:end]
 		typeName := normalizeType(raw)
@@ -3397,7 +3551,7 @@ func semanticTokensForTextScoped(text string, idx lspIndex, contract templateInd
 		shortStart := start + len(raw) - len(shortTypeName(raw))
 		tokens = append(tokens, semanticToken{start: shortStart, length: end - shortStart, tokenType: semanticType})
 	}
-	for _, match := range lspFuncTypeRegexp.FindAllStringSubmatchIndex(text, -1) {
+	for _, match := range lspFuncTypeRegexp.FindAllStringSubmatchIndex(annotationScanText(text), -1) {
 		start, end := match[2], match[3]
 		raw := text[start:end]
 		funcName := normalizeType(raw)
@@ -3407,7 +3561,7 @@ func semanticTokensForTextScoped(text string, idx lspIndex, contract templateInd
 		shortStart := start + len(raw) - len(shortTypeName(raw))
 		tokens = append(tokens, semanticToken{start: shortStart, length: end - shortStart, tokenType: semanticFunction})
 	}
-	for _, match := range lspFuncDeclarationRegexp.FindAllStringSubmatchIndex(text, -1) {
+	for _, match := range lspFuncDeclarationRegexp.FindAllStringSubmatchIndex(annotationScanText(text), -1) {
 		nameStart, nameEnd := match[2], match[3]
 		funcType := normalizeType(text[match[4]:match[5]])
 		if _, ok := idx.Funcs[funcType]; !ok {
@@ -3415,7 +3569,7 @@ func semanticTokensForTextScoped(text string, idx lspIndex, contract templateInd
 		}
 		tokens = append(tokens, semanticToken{start: nameStart, length: nameEnd - nameStart, tokenType: semanticFunction})
 	}
-	for _, match := range genPattern.FindAllStringSubmatchIndex(text, -1) {
+	for _, match := range genPattern.FindAllStringSubmatchIndex(annotationScanText(text), -1) {
 		nameStart, nameEnd := match[2], match[3]
 		pkgStart, pkgEnd := match[4], match[5]
 		name := text[nameStart:nameEnd]
@@ -3442,7 +3596,7 @@ func semanticTokensForTextScoped(text string, idx lspIndex, contract templateInd
 		}
 		tokens = append(tokens, semanticToken{start: ref.nameStart, length: ref.nameEnd - ref.nameStart, tokenType: semanticParameter})
 	}
-	for _, action := range lspActionPattern.FindAllStringIndex(text, -1) {
+	for _, action := range templateActionIndexes(text) {
 		actionText := text[action[0]:action[1]]
 		if isTemplateCommentAction(actionText) {
 			continue
@@ -3587,7 +3741,7 @@ func shortTypeName(typeName string) string {
 }
 
 func builtInFunctionAt(text string, offset int) (string, int, int, bool) {
-	for _, action := range lspActionPattern.FindAllStringIndex(text, -1) {
+	for _, action := range templateActionIndexes(text) {
 		if offset < action[0] || offset > action[1] {
 			continue
 		}
@@ -3605,7 +3759,7 @@ func builtInFunctionAt(text string, offset int) (string, int, int, bool) {
 }
 
 func templateFunctionAt(text string, offset int, idx lspIndex, contract templateIndex) (string, int, int, bool) {
-	for _, action := range lspActionPattern.FindAllStringIndex(text, -1) {
+	for _, action := range templateActionIndexes(text) {
 		if offset < action[0] || offset > action[1] {
 			continue
 		}
@@ -4038,6 +4192,40 @@ func memberValueType(typ goTypeIndex, name string) (string, bool) {
 	return "", false
 }
 
+// qualifyMemberParams qualifies the parameter types of a method of owner that
+// are declared in the owner's own package, keeping the ... of a variadic one.
+func qualifyMemberParams(idx lspIndex, owner goTypeIndex, params []string) []string {
+	qualified := make([]string, 0, len(params))
+	for _, param := range params {
+		variadic := strings.HasPrefix(param, "...")
+		param = qualifyMemberType(idx, owner, strings.TrimPrefix(param, "..."))
+		if variadic {
+			param = "..." + param
+		}
+		qualified = append(qualified, param)
+	}
+	return qualified
+}
+
+// underlyingValueType returns the type a named type such as OpeningHours
+// ([7]Day) is defined as, qualified against the named type's package, so it
+// can be ranged over or measured. Other types are returned as they are.
+func underlyingValueType(idx lspIndex, typeExpr string) string {
+	for range 8 {
+		normalized := stripPointer(strings.TrimSpace(typeExpr))
+		if normalized == "" || isCompositeValueType(normalized) {
+			return typeExpr
+		}
+		resolved := resolveGoType(idx, normalized)
+		typ, ok := idx.Types[resolved]
+		if !ok || typ.Underlying == "" {
+			return typeExpr
+		}
+		typeExpr = qualifyMemberType(idx, typ, typ.Underlying)
+	}
+	return typeExpr
+}
+
 // qualifyMemberType qualifies a member type declared in the owner's own package.
 // The index stores those unqualified ("Site", "[]MenuItem", "*Page"), which is
 // ambiguous as soon as another package declares a type with the same name.
@@ -4076,7 +4264,7 @@ func resolveGoType(idx lspIndex, typeExpr string) string {
 }
 
 func rangeElementType(idx lspIndex, typeExpr string) string {
-	normalized := strings.TrimSpace(typeExpr)
+	normalized := strings.TrimSpace(underlyingValueType(idx, typeExpr))
 	for {
 		normalized = stripPointer(normalized)
 		switch {
@@ -4152,8 +4340,17 @@ func stripPointer(typeExpr string) string {
 func scopeAt(text string, offset int, idx lspIndex, contract templateIndex) scope {
 	stack := []scope{{dotType: contract.Dot, vars: map[string]string{}}}
 	before := text[:max(0, min(offset, len(text)))]
-	for _, match := range lspScopeActionPattern.FindAllStringSubmatchIndex(before, -1) {
-		action := strings.TrimSpace(strings.Trim(before[match[2]:match[3]], "- "))
+	for _, item := range templateActions(before) {
+		if item.comment {
+			continue
+		}
+
+		action, _, ok := actionContent(before[item.start:item.end])
+		if !ok {
+			continue
+		}
+
+		action = strings.TrimSpace(action)
 		keyword := actionKeyword(action)
 		expression := strings.TrimSpace(action[len(keyword):])
 		parent := stack[len(stack)-1]
@@ -4459,7 +4656,7 @@ func matchingOpenParen(text string, close int) int {
 }
 
 func typeReferenceAt(text string, offset int, idx lspIndex) (typeRef, bool) {
-	for _, match := range genPattern.FindAllStringSubmatchIndex(text, -1) {
+	for _, match := range genPattern.FindAllStringSubmatchIndex(annotationScanText(text), -1) {
 		nameStart, nameEnd := match[2], match[3]
 		pkgStart, pkgEnd := match[4], match[5]
 		name := text[nameStart:nameEnd]
@@ -4480,7 +4677,7 @@ func typeReferenceAt(text string, offset int, idx lspIndex) (typeRef, bool) {
 		}
 		return typeRef{typeName: typeName, start: shortStart, end: pkgEnd}, true
 	}
-	for _, match := range lspDotTypeRegexp.FindAllStringSubmatchIndex(text, -1) {
+	for _, match := range lspDotTypeRegexp.FindAllStringSubmatchIndex(annotationScanText(text), -1) {
 		start, end := match[2], match[3]
 		if offset < start || offset > end {
 			continue
@@ -4528,7 +4725,7 @@ func typeReferenceAt(text string, offset int, idx lspIndex) (typeRef, bool) {
 }
 
 func funcReferenceAt(text string, offset int, idx lspIndex) (funcRef, bool) {
-	for _, match := range lspFuncTypeRegexp.FindAllStringSubmatchIndex(text, -1) {
+	for _, match := range lspFuncTypeRegexp.FindAllStringSubmatchIndex(annotationScanText(text), -1) {
 		start, end := match[2], match[3]
 		if offset < start || offset > end {
 			continue
@@ -4590,7 +4787,7 @@ type symbolDeclRef struct {
 
 func typedRootDeclarationRefs(text string, symbols symbolParseConfig) []symbolDeclRef {
 	var refs []symbolDeclRef
-	for _, match := range annotationPattern.FindAllStringSubmatchIndex(text, -1) {
+	for _, match := range annotationPattern.FindAllStringSubmatchIndex(annotationScanText(text), -1) {
 		annotation := text[match[2]:match[3]]
 		if reservedContractAnnotation(annotation) {
 			continue
@@ -4651,7 +4848,7 @@ func typedRootRenameEdits(text string, contract templateIndex, oldName, newName 
 			add(ref.nameStart, ref.nameEnd)
 		}
 	}
-	for _, action := range lspActionPattern.FindAllStringIndex(text, -1) {
+	for _, action := range templateActionIndexes(text) {
 		actionText := text[action[0]:action[1]]
 		if isTemplateCommentAction(actionText) {
 			continue

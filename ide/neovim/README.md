@@ -32,7 +32,7 @@ With `lazy.nvim`:
 }
 ```
 
-From a release ZIP, copy the contents of `go-clue-neovim` into a Neovim package
+From the release assets, unzip `go-clue-neovim-*.zip` into a Neovim package
 directory such as:
 
 ```text
@@ -47,13 +47,13 @@ On Windows:
 
 ## Configure
 
-Default setup:
+The package calls the default setup itself when it loads:
 
 ```lua
 require("go-clue").setup()
 ```
 
-Custom command or filetypes:
+Call `setup` again only to change the options. Custom command or filetypes:
 
 ```lua
 require("go-clue").setup({
@@ -70,7 +70,7 @@ as the root:
 go-clue lsp /path/to/module
 ```
 
-Disable automatic startup:
+Disable automatic startup. Set this before the plugin loads:
 
 ```lua
 vim.g.go_clue_auto_start = false

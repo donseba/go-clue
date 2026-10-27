@@ -14,8 +14,10 @@ It lets a template say:
 */}}
 
 {{ time.Format Page.GeneratedAt "15:04:05" }}
-{{ money.EUR .MonthlyCents }}
-{{ text.Initials .Owner }}
+{{ range Page.Accounts }}
+    {{ money.EUR .MonthlyCents }}
+    {{ text.Initials .Owner }}
+{{ end }}
 ```
 
 At runtime, `time`, `money`, and `text` are not magical imports. They are normal
@@ -166,8 +168,10 @@ The template can call:
 
 ```gotemplate
 {{ time.Format Page.GeneratedAt "15:04:05" }}
-{{ money.EUR .MonthlyCents }}
-{{ text.Initials .Owner }}
+{{ range Page.Accounts }}
+    {{ money.EUR .MonthlyCents }}
+    {{ text.Initials .Owner }}
+{{ end }}
 ```
 
 `time`, `money`, and `text` each call a generated template function. Each
@@ -233,8 +237,10 @@ So the template can use all three namespaces side by side:
 
 ```gotemplate
 {{ time.Format Page.GeneratedAt "15:04:05" }}
-{{ money.EUR .MonthlyCents }}
-{{ text.Initials .Owner }}
+{{ range Page.Accounts }}
+    {{ money.EUR .MonthlyCents }}
+    {{ text.Initials .Owner }}
+{{ end }}
 ```
 
 The LSP follows the same shape. It creates one synthetic type per namespace:
@@ -288,7 +294,7 @@ The method, such as `EUR`, points to the actual source function.
 Install the experimental generator first:
 
 ```sh
-go install github.com/donseba/go-clue/cmd/go-clue-exp-gen@main
+go install github.com/donseba/go-clue/cmd/go-clue-exp-gen@latest
 ```
 
 From a module root:
@@ -388,7 +394,7 @@ the application's FuncMap:
   "templateFunctions": [
     {
       "name": "async",
-      "path": "github.com/donseba/go-partial/templatefunctions.Async"
+      "path": "github.com/example/ui.Async"
     }
   ]
 }

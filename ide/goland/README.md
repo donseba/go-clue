@@ -8,6 +8,8 @@ hover, and navigation.
 
 ## Requirements
 
+The plugin needs GoLand 2025.3 or newer.
+
 Install `go-clue` on your PATH:
 
 ```bash
@@ -64,6 +66,11 @@ highlighting.
 Writing `.go-clue/index.json` is optional. Use it only when you want a generated
 artifact for CI, debugging, or other tools.
 
+The plugin reads indexes of version 2 and 3. It does not read an index of
+another version; `Tools > Show go-clue Status` and the IDE log
+(`Help > Show Log`) name the version it found. Write the index again with a
+current `go-clue`, or update the plugin when `go-clue` is newer.
+
 Disable go-clue for one project with `.go-clue/config.json`:
 
 ```json
@@ -71,6 +78,9 @@ Disable go-clue for one project with `.go-clue/config.json`:
   "enabled": false
 }
 ```
+
+Like the CLI, the plugin reads `enabled` and `writeIndex` from the older
+`.go-doc/config.json` when `.go-clue/config.json` does not exist.
 
 ## Editor Features
 
@@ -81,18 +91,27 @@ Disable go-clue for one project with `.go-clue/config.json`:
 - hover and go-to-definition for typed root types, fields, methods, functions, and
   child templates
 - document symbols for declared typed roots
+- rename for typed roots within a template
+- quick fixes for adding a missing field, creating a missing model struct, and
+  moving annotations that sit before a `define` inside it
 - semantic highlighting for typed root types, typed root names, functions, fields, and
-  methods
+  methods; the colours are under `Settings > Editor > Color Scheme > go-clue`
+- template symbols are underlined on Ctrl+hover
+
+Templates in the Go module cache and in `GOROOT` are skipped.
 
 ## Actions
 
 The plugin adds:
 
 ```text
-Tools > Rebuild go-clue Index
-Tools > Show go-clue Index Status
+Tools > Write go-clue Index
+Tools > Show go-clue Status
+Tools > go-clue Enabled
 Tools > go-clue Auto Index
 ```
+
+`go-clue Enabled` turns go-clue on or off for the project.
 
 Auto-indexing watches `.go`, `.gohtml`, `.tmpl`, and `.html` files inside the
 project and debounces rebuilds. It is disabled by default because the language
@@ -104,6 +123,10 @@ server indexes in memory. Enable it with the action above or with
   "writeIndex": true
 }
 ```
+
+`writeIndex` in `.go-clue/config.json` overrides the action. Without auto-indexing,
+the plugin keeps its own index for hover and navigation in the system temp
+folder instead of `.go-clue/index.json`.
 
 ## Build
 

@@ -20,6 +20,9 @@ data class GoClueType(
     val doc: String,
     val fields: Map<String, GoClueField>,
     val methods: Map<String, GoClueMethod>,
+    // underlying is what a named type other than a struct or an interface is
+    // defined as, such as "[7]Day" for OpeningHours, relative to its package.
+    val underlying: String = "",
 )
 
 data class GoClueField(
@@ -80,6 +83,9 @@ class GoClueIndex(
     val rootPath: String? = null,
     val checkedPaths: List<String> = emptyList(),
     val loadError: String? = null,
+    // functions are the project's template functions by name, for templates
+    // the index does not hold, such as generated ones.
+    val functions: Map<String, String> = emptyMap(),
 ) {
     private fun withCheckedPaths(checkedPaths: List<String>): GoClueIndex = GoClueIndex(
         types = types,
@@ -88,6 +94,7 @@ class GoClueIndex(
         short = short,
         symbolAliases = symbolAliases,
         symbolStrictMode = symbolStrictMode,
+        functions = functions,
         source = source,
         rootPath = rootPath,
         checkedPaths = checkedPaths,
@@ -228,8 +235,22 @@ class GoClueIndex(
             }
         }
 
-        private fun parse(json: String, source: String, rootPath: String, checkedPaths: List<String>): GoClueIndex {
+        internal fun parse(json: String, source: String, rootPath: String, checkedPaths: List<String>): GoClueIndex {
             val root = Gson().fromJson(json.trimStart('\uFEFF'), JsonObject::class.java)
+            // An index of a version the plugin does not know is not read, and
+            // the status and the IDE log say why.
+            GoClueIndexVersion.check(root, source)?.let { problem ->
+                return GoClueIndex(
+                    types = emptyMap(),
+                    funcs = emptyMap(),
+                    templates = emptyMap(),
+                    short = emptyMap(),
+                    source = source,
+                    rootPath = rootPath,
+                    checkedPaths = checkedPaths,
+                    loadError = problem,
+                )
+            }
             val types = mutableMapOf<String, GoClueType>()
             val funcs = mutableMapOf<String, GoClueFunc>()
             val templates = mutableMapOf<String, TemplateContract>()
@@ -281,6 +302,7 @@ class GoClueIndex(
                     doc = obj.get("doc")?.asString ?: "",
                     fields = fields,
                     methods = methods,
+                    underlying = obj.get("underlying")?.asString ?: "",
                 )
             }
 
@@ -335,6 +357,9 @@ class GoClueIndex(
                 name to value.asString
             } ?: emptyMap()
             val symbolStrictMode = root.get("symbolStrictMode")?.asBoolean ?: false
+            val functions = jsonObject(root, "functions")?.entrySet()?.associate { (name, value) ->
+                name to value.asString
+            } ?: emptyMap()
 
             return GoClueIndex(
                 types = types,
@@ -346,6 +371,7 @@ class GoClueIndex(
                 source = source,
                 rootPath = rootPath,
                 checkedPaths = checkedPaths,
+                functions = functions,
             )
         }
 
@@ -381,10 +407,13 @@ class GoClueIndex(
         val base = templates[relative] ?: templates.entries.firstOrNull { (templatePath, _) ->
             relative.endsWith(templatePath) || normalizedPath.endsWith(templatePath)
         }?.value
+        // A template the index does not hold, such as a generated one, still
+        // has the project's functions.
+        val fileBase = base ?: TemplateContract(roots = emptyMap(), funcs = functions).takeIf { functions.isNotEmpty() }
         val activeBase = offset
             ?.let { activeDefineNameAt(text.orEmpty(), it) }
             ?.let { defineName -> templateByNameInFile(relative, defineName)?.second }
-            ?: base
+            ?: fileBase
         return mergeInlineContract(path, activeBase)
     }
 
@@ -401,11 +430,14 @@ class GoClueIndex(
         return entry?.let { it.key to it.value }
     }
 
+    // templateByNameInFile returns the contract of the define name in the
+    // template at relative. A define without a contract of its own has none,
+    // so the file's contract applies, like in the language server.
     private fun templateByNameInFile(relative: String, name: String): Pair<String, TemplateContract>? {
         val normalized = relative.replace('\\', '/')
         return templates.entries.firstOrNull { (_, contract) ->
             contract.name == name && contract.source.replace('\\', '/') == normalized
-        }?.let { it.key to it.value } ?: templateByName(name)
+        }?.let { it.key to it.value }
     }
 
     fun fieldsForType(typeName: String?): Map<String, GoClueField> {
@@ -496,9 +528,10 @@ class GoClueIndex(
 
     private fun functionResultValueType(contract: TemplateContract, name: String): String? {
         val fnName = contract.funcs[name] ?: return null
-        val result = funcs[fnName]?.result?.takeIf { it.isNotBlank() } ?: return null
+        val fn = funcs[fnName] ?: return null
+        val result = fn.result.takeIf { it.isNotBlank() } ?: return null
         if (isCompositeValueType(result)) return result
-        return resolveGoType(result) ?: result
+        return resolveGoType(qualifyPackageType(fn.pkg, result)) ?: result
     }
 
     fun resolveFieldPath(rootType: String, fields: List<String>): String? {
@@ -529,12 +562,34 @@ class GoClueIndex(
     // "*Page"), which is ambiguous as soon as another package declares a type
     // with the same name.
     private fun qualifyMemberType(owner: GoClueType, typeExpr: String): String {
+        return qualifyPackageType(owner.pkg, typeExpr)
+    }
+
+    // qualifyPackageType qualifies a type of package pkg that the index stores
+    // unqualified. An index of an older go-clue stores the results of
+    // functions like that too.
+    private fun qualifyPackageType(pkg: String, typeExpr: String): String {
         val trimmed = typeExpr.trim()
         val base = normalizeGoType(trimmed)
-        if (owner.pkg.isBlank() || base.isBlank() || base.any { it in ".[]{}" }) return trimmed
-        val qualified = "${owner.pkg}.$base"
+        if (pkg.isBlank() || base.isBlank() || base.any { it in ".[]{}" }) return trimmed
+        val qualified = "$pkg.$base"
         if (!types.containsKey(qualified)) return trimmed
         return trimmed.removeSuffix(base) + qualified
+    }
+
+    // underlyingType returns what a named type such as OpeningHours ([7]Day)
+    // is defined as, qualified against its package, so it can be ranged over.
+    // Other types are returned as they are.
+    private fun underlyingType(typeExpr: String): String {
+        var current = typeExpr
+        repeat(8) {
+            val normalized = stripPointer(current)
+            if (normalized.isBlank() || isCompositeValueType(normalized)) return current
+            val type = types[resolveGoType(normalized)] ?: return current
+            if (type.underlying.isBlank()) return current
+            current = qualifyPackageType(type.pkg, type.underlying)
+        }
+        return current
     }
 
     fun resolveGoType(typeExpr: String): String? {
@@ -545,7 +600,7 @@ class GoClueIndex(
     }
 
     fun rangeElementType(typeExpr: String?): String? {
-        val normalized = stripPointer(typeExpr ?: return null)
+        val normalized = stripPointer(underlyingType(typeExpr ?: return null))
         return when {
             normalized.startsWith("[]") -> resolveGoType(normalized.removePrefix("[]"))
             normalized.startsWith("[") -> {
@@ -558,7 +613,7 @@ class GoClueIndex(
     }
 
     fun isRangeable(typeExpr: String?): Boolean {
-        val normalized = stripPointer(typeExpr ?: return false)
+        val normalized = stripPointer(underlyingType(typeExpr ?: return false))
         return normalized.startsWith("[]") || normalized.startsWith("[") || normalized.startsWith("map[")
     }
 
@@ -680,45 +735,54 @@ class GoClueIndex(
         return defineBlocks(text).firstOrNull { it.name == name }?.let { text.substring(it.bodyStart, it.bodyEnd) }
     }
 
+    // activeDefineNameAt returns the define around offset. Other blocks are
+    // tracked unnamed, so their {{end}} does not close the define, and
+    // examples in comments are no actions.
     private fun activeDefineNameAt(text: String, offset: Int): String? {
         val boundedOffset = offset.coerceIn(0, text.length)
         val stack = mutableListOf<String>()
-        for (match in templateActionPattern.findAll(text.substring(0, boundedOffset))) {
-            val content = actionContent(match.value) ?: continue
+        val before = text.substring(0, boundedOffset)
+        for (action in GoClueTemplateActions.codeActions(before)) {
+            val content = GoClueTemplateActions.content(action.text(before)) ?: continue
             val define = defineActionPattern.matchEntire(content)
-            if (define != null) {
-                stack.add(define.groupValues[1])
-                continue
+            when {
+                define != null -> stack.add(define.groupValues[1])
+                opensBlock(content) -> stack.add("")
+                content == "end" && stack.isNotEmpty() -> stack.removeAt(stack.lastIndex)
             }
-            if (content == "end" && stack.isNotEmpty()) stack.removeAt(stack.lastIndex)
         }
-        return stack.lastOrNull()
+        return stack.lastOrNull { it.isNotEmpty() }
     }
 
     private fun defineBlocks(text: String): List<DefineBlock> {
         data class OpenDefine(val name: String, val start: Int, val bodyStart: Int)
         val stack = mutableListOf<OpenDefine>()
         val blocks = mutableListOf<DefineBlock>()
-        for (match in templateActionPattern.findAll(text)) {
-            val content = actionContent(match.value) ?: continue
+        for (action in GoClueTemplateActions.codeActions(text)) {
+            val content = GoClueTemplateActions.content(action.text(text)) ?: continue
             val define = defineActionPattern.matchEntire(content)
             if (define != null) {
-                stack.add(OpenDefine(define.groupValues[1], match.range.first, match.range.last + 1))
+                stack.add(OpenDefine(define.groupValues[1], action.start, action.end))
+                continue
+            }
+            if (opensBlock(content)) {
+                stack.add(OpenDefine("", action.start, action.end))
                 continue
             }
             if (content == "end" && stack.isNotEmpty()) {
                 val open = stack.removeAt(stack.lastIndex)
-                blocks.add(DefineBlock(open.name, open.start, match.range.last + 1, open.bodyStart, match.range.first))
+                if (open.name.isNotEmpty()) {
+                    blocks.add(DefineBlock(open.name, open.start, action.end, open.bodyStart, action.start))
+                }
             }
         }
         return blocks.sortedBy { it.start }
     }
 
-    private fun actionContent(action: String): String? {
-        val start = action.indexOf("{{")
-        val end = action.lastIndexOf("}}")
-        if (start < 0 || end < start) return null
-        return action.substring(start + 2, end).trim().trim('-').trim()
+    // opensBlock reports whether action content starts a block other than a
+    // define that a later {{end}} closes.
+    private fun opensBlock(content: String): Boolean {
+        return content.takeWhile { it.isLetterOrDigit() || it == '_' } in blockKeywords
     }
 
     private fun templateText(filePath: String): String? {
@@ -739,18 +803,13 @@ class GoClueIndex(
         }
     }
 
-    private fun contractScanText(text: String): String {
-        val matches = templateCommentPattern.findAll(text).map { it.groupValues[1].trim() }.filter { it.isNotBlank() }.toList()
-        if (matches.isEmpty()) return text
-        return matches.joinToString(separator = "\n", postfix = "\n")
-    }
+    private fun contractScanText(text: String): String = GoClueTemplateActions.commentBodies(text)
 
     private val dotPattern = Regex("""(?m)^\s*@dot\s+([A-Za-z_][A-Za-z0-9_./\[\]*-]*)\s*$""")
     private val funcPattern = Regex("""(?m)^\s*@func\s+([A-Za-z_][A-Za-z0-9_]*)\s+([A-Za-z_][A-Za-z0-9_./-]*)\s*$""")
     private val genPattern = Regex("""(?m)^\s*@gen\s+([A-Za-z_][A-Za-z0-9_]*)\s+([A-Za-z_][A-Za-z0-9_./-]*)\s*$""")
     private val annotationPattern = Regex("""(?m)^\s*@([A-Za-z_][A-Za-z0-9_]*)\s+([A-Za-z_][A-Za-z0-9_]*)(?:\s+([A-Za-z_][A-Za-z0-9_./\[\]*-]*))?\s*$""")
-    private val templateCommentPattern = Regex("""(?s)\{\{/\*(.*?)\*/\}\}""")
-    private val templateActionPattern = Regex("""\{\{\s*(?:-)?\s*[^}]*\}\}""")
+    private val blockKeywords = setOf("if", "range", "with", "block")
     private val defineActionPattern = Regex("define\\s+\"([^\"]+)\"")
     private val GEN_TYPE_PREFIX = "\$go-clue/gen."
 

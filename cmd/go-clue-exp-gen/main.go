@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -11,37 +12,53 @@ import (
 	"github.com/donseba/go-clue/exp/gen"
 )
 
-func main() {
-	var opts gen.Options
-	out := flag.String("out", "", "write generated Go source to this file")
-	templates := flag.String("templates", "", "comma-separated templates to scan for experimental @gen declarations; when omitted, go-clue scans the nearest Go module")
-	flag.StringVar(&opts.PackagePath, "pkg", "", "Go package path to wrap")
-	flag.StringVar(&opts.Namespace, "namespace", "", "template namespace name")
-	flag.StringVar(&opts.PackageName, "package", "go-cluegen", "generated Go package name")
-	flag.Parse()
+// defaultPackageName is the generated Go package name when -package is not
+// given. It is the same default gen.GenerateDirectives uses.
+const defaultPackageName = "gocluegen"
 
-	if opts.PackagePath == "" && flag.NArg() > 0 {
-		opts.PackagePath = flag.Arg(0)
+func main() {
+	if err := run(os.Args[1:], os.Stdout); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+}
+
+// run parses the command line in args and writes the generated source to
+// stdout, or to the -out file.
+func run(args []string, stdout io.Writer) error {
+	var opts gen.Options
+
+	flags := flag.NewFlagSet("go-clue-exp-gen", flag.ExitOnError)
+	out := flags.String("out", "", "write generated Go source to this file")
+	templates := flags.String("templates", "", "comma-separated templates to scan for experimental @gen declarations; when omitted, go-clue scans the nearest Go module")
+	flags.StringVar(&opts.PackagePath, "pkg", "", "Go package path to wrap")
+	flags.StringVar(&opts.Namespace, "namespace", "", "template namespace name")
+	flags.StringVar(&opts.PackageName, "package", defaultPackageName, "generated Go package name")
+
+	if err := flags.Parse(args); err != nil {
+		return err
+	}
+
+	if opts.PackagePath == "" && flags.NArg() > 0 {
+		opts.PackagePath = flags.Arg(0)
 	}
 
 	source, err := generate(context.Background(), opts, splitList(*templates))
 	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
+		return err
 	}
 
 	if *out == "" {
-		_, _ = os.Stdout.Write(source)
-		return
+		_, err := stdout.Write(source)
+
+		return err
 	}
+
 	if err := os.MkdirAll(filepath.Dir(*out), 0o755); err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
+		return err
 	}
-	if err := os.WriteFile(*out, source, 0o644); err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
-	}
+
+	return os.WriteFile(*out, source, 0o644)
 }
 
 func generate(ctx context.Context, opts gen.Options, templates []string) ([]byte, error) {
