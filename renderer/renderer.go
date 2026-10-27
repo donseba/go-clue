@@ -440,7 +440,7 @@ func validRootName(name string) bool {
 
 var (
 	typedRootPattern       = regexp.MustCompile(`(?m)^\s*@([A-Za-z_][A-Za-z0-9_]*)\s+([A-Za-z_][A-Za-z0-9_]*)\s+([A-Za-z_][A-Za-z0-9_./\[\]*-]*)\s*$`)
-	templateCommentPattern = regexp.MustCompile(`(?s)\{\{/\*(.*?)\*/\}\}`)
+	templateCommentPattern = regexp.MustCompile(`(?s)\{\{(?:-[ \t\r\n])?/\*(.*?)\*/(?:[ \t\r\n]-)?\}\}`)
 )
 
 func reservedContractAnnotation(name string) bool {

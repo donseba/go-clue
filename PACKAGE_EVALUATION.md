@@ -242,7 +242,7 @@ native `html/template` syntax.
 
 ### It is not compile-time enforcement by default
 
-Unless CI runs `go-clue` checks or generated artifacts are validated, many
+Unless CI runs `go-clue check` or generated artifacts are validated, many
 benefits are editor-time benefits. That is still useful, but it is not the same
 as generated Go code failing to compile.
 
@@ -347,7 +347,6 @@ templates, typed enough to enjoy," the easier it is to explain and trust.
 4. Keep `.go-clue/config.json` optional and minimal.
 5. Keep `@gen` clearly experimental until its API stabilizes.
 6. Document runtime/editor drift clearly, especially global functions.
-7. Add CI-friendly validation commands if not already present.
 
 ## Objective Conclusion
 

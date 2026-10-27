@@ -81,6 +81,80 @@ class GoClueTemplateContextTest {
         assertEquals(category, pointer)
     }
 
+    @Test
+    fun `examples in comments do not change the scope`() {
+        val text = """{{/* Example: {{range .Menu}} lists the menu. */}}{{.Title}}"""
+        assertEquals(view, ownerAt(text, text.indexOf(".Title") + 1))
+    }
+
+    @Test
+    fun `fields inside comments are no references`() {
+        val text = """{{/* {{.Home.Title}} */}}{{.Home.Title}}"""
+        val refs = GoClueTemplateContext.fieldReferencesInRange(text, 0, text.length, index, contract)
+        assertEquals(listOf(text.lastIndexOf("Home")), refs.filter { it.memberName == "Home" }.map { it.startOffset })
+    }
+
+    @Test
+    fun `template actions read comments and strings like text-template`() {
+        val text = """{{/* {{template "x" .Tabs}} */}}{{ printf "}}" .A }}{{- /* @dot a.B */ -}}{{ .C }}"""
+        val actions = GoClueTemplateActions.actions(text).map { it.text(text) }
+        assertEquals(
+            listOf("""{{/* {{template "x" .Tabs}} */}}""", """{{ printf "}}" .A }}""", "{{- /* @dot a.B */ -}}", "{{ .C }}"),
+            actions,
+        )
+        assertEquals("""{{template "x" .Tabs}}""" + "\n" + "@dot a.B\n", GoClueTemplateActions.commentBodies(text))
+
+        val masked = GoClueTemplateActions.annotationText("<p>@dot x.Y</p>{{/* @dot a.B */}}")
+        assertEquals(false, masked.contains("x.Y"))
+        assertEquals(true, masked.contains("@dot a.B"))
+    }
+
+    @Test
+    fun `named array types range over their elements`() {
+        val directory = "example.com/app/directory"
+        val entry = "$directory.Entry"
+        val hours = "$directory.OpeningHours"
+        val day = "$directory.Day"
+        val named = GoClueIndex(
+            types = mapOf(
+                entry to type(entry, "Entry", "Hours" to "OpeningHours", pkg = directory),
+                hours to type(hours, "OpeningHours", pkg = directory).copy(underlying = "[7]Day"),
+                day to type(day, "Day", "Open" to "string", pkg = directory),
+                "example.com/app/other.Day" to type("example.com/app/other.Day", "Day", pkg = "example.com/app/other"),
+            ),
+            funcs = emptyMap(),
+            templates = emptyMap(),
+            short = mapOf(
+                "Entry" to listOf(entry),
+                "OpeningHours" to listOf(hours),
+                "Day" to listOf(day, "example.com/app/other.Day"),
+            ),
+        )
+        val text = """{{range .Hours}}{{.Open}}{{end}}"""
+        val owner = GoClueTemplateContext.fieldReferenceAt(text, text.indexOf(".Open") + 1, named, TemplateContract(roots = emptyMap(), dot = entry))
+        assertEquals(day, owner?.ownerTypeName)
+    }
+
+    @Test
+    fun `function results of the function's own package resolve`() {
+        val users = "example.com/app/users"
+        val user = "$users.User"
+        val withFunc = GoClueIndex(
+            types = mapOf(
+                user to type(user, "User", "Name" to "string", pkg = users),
+                "example.com/app/admin.User" to type("example.com/app/admin.User", "User", pkg = "example.com/app/admin"),
+            ),
+            funcs = mapOf(
+                "$users.Current" to GoClueFunc("$users.Current", "Current", users, "users.go", 1, 1, "", "User", "func() User", emptyList()),
+            ),
+            templates = emptyMap(),
+            short = mapOf("User" to listOf(user, "example.com/app/admin.User")),
+        )
+        val text = """{{ current.Name }}"""
+        val ref = GoClueTemplateContext.fieldReferenceAt(text, text.indexOf("Name"), withFunc, TemplateContract(roots = emptyMap(), funcs = mapOf("current" to "$users.Current")))
+        assertEquals(user, ref?.ownerTypeName)
+    }
+
     private fun ownerAt(text: String, offset: Int): String? {
         return GoClueTemplateContext.fieldReferenceAt(text, offset, index, contract)?.ownerTypeName
     }

@@ -557,3 +557,12 @@ func writeTemplate(t *testing.T, root, name, content string) string {
 	}
 	return path
 }
+
+func TestContractScanTextReadsTrimmedComments(t *testing.T) {
+	src := "{{- /* @model Page example.com/app.Page */ -}}\n{{/* @model User example.com/app.User */}}"
+	got := contractScanText(src)
+	want := "@model Page example.com/app.Page\n@model User example.com/app.User\n"
+	if got != want {
+		t.Fatalf("contractScanText() = %q, want %q", got, want)
+	}
+}

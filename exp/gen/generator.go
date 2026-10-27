@@ -521,7 +521,7 @@ func normalizePackagePath(packagePath string) string {
 	return packagePath
 }
 
-var templateCommentPattern = regexp.MustCompile(`(?s)\{\{/\*(.*?)\*/\}\}`)
+var templateCommentPattern = regexp.MustCompile(`(?s)\{\{(?:-[ \t\r\n])?/\*(.*?)\*/(?:[ \t\r\n]-)?\}\}`)
 
 func contractScanText(src string) string {
 	matches := templateCommentPattern.FindAllStringSubmatch(src, -1)

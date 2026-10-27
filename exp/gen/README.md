@@ -30,6 +30,8 @@ go-clue-exp-gen \
 When `-templates` is omitted, the command finds the nearest `go.mod` and scans
 the module for `.gohtml`, `.tmpl`, and `.html` files with `@gen` declarations.
 Use `-templates` only when you want to limit generation to specific files.
+`-package` names the generated Go package; without it, the package is
+`gocluegen`.
 
 The generated package exposes a normal `template.FuncMap`:
 

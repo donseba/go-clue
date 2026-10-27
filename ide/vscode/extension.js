@@ -158,10 +158,21 @@ function goClueEnabled(root) {
   return !config || config.enabled !== false;
 }
 
+// projectConfigPath returns .go-clue/config.json, or the older
+// .go-doc/config.json when that does not exist, like the go-clue CLI. The two
+// files are never merged.
+function projectConfigPath(root) {
+  const configPath = path.join(root, ".go-clue", "config.json");
+  if (fs.existsSync(configPath)) return configPath;
+  const legacyPath = path.join(root, ".go-doc", "config.json");
+  if (fs.existsSync(legacyPath)) return legacyPath;
+  return null;
+}
+
 function projectConfig(root) {
   try {
-    const configPath = path.join(root, ".go-clue", "config.json");
-    if (!fs.existsSync(configPath)) return null;
+    const configPath = projectConfigPath(root);
+    if (!configPath) return null;
     const config = JSON.parse(fs.readFileSync(configPath, "utf8"));
     return config || null;
   } catch (err) {

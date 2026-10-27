@@ -13,11 +13,22 @@ VS Code integration for typed Go templates powered by `go-clue lsp`.
   data
 - hover and go to definition for contract types, fields, methods, functions, and
   child templates
+- rename of a typed root across a template
+- document symbols for the template's typed roots and functions
+- quick fixes: add a missing field, create a missing model struct, and move
+  annotations that sit before a `define` inside it
 - semantic highlighting for typed root types, typed root names, functions, fields, and
   methods
 - optional debounced index rebuilds
 
 ## Requirements
+
+The extension needs VS Code 1.90 or newer. Install `go-clue-vscode-*.vsix` from
+the release assets with `Extensions: Install from VSIX...`, or with:
+
+```bash
+code --install-extension go-clue-vscode-*.vsix
+```
 
 Install the `go-clue` CLI and make sure it is available on `PATH`:
 
@@ -53,7 +64,8 @@ use `@dot` and `{{ .Title }}` instead.
 
 No `.go-clue` folder is required. The language server finds `go.mod` and builds
 an in-memory index for completion, diagnostics, hover, navigation, and semantic
-highlighting.
+highlighting. The workspace folder itself need not be a Go module: in a parent
+folder of several modules, every template uses the nearest `go.mod` above it.
 
 Writing `.go-clue/index.json` is optional. Use it only when you want a generated
 artifact for CI, debugging, or other tools.
@@ -62,6 +74,7 @@ artifact for CI, debugging, or other tools.
 
 - `go-clue: Rebuild Index`
 - `go-clue: Show Index Status`
+- `go-clue: Toggle Enabled`
 - `go-clue: Toggle Auto Index`
 - `go-clue: Restart LSP`
 
@@ -88,3 +101,6 @@ or opt out per project with `.go-clue/config.json`:
   "writeIndex": true
 }
 ```
+
+Like the CLI, the extension reads `enabled` and `writeIndex` from the older
+`.go-doc/config.json` when `.go-clue/config.json` does not exist.

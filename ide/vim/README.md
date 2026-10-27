@@ -26,7 +26,7 @@ Plug 'prabirshrestha/vim-lsp'
 Plug 'donseba/go-clue', { 'rtp': 'ide/vim' }
 ```
 
-From a release ZIP, copy the contents of `go-clue-vim` into:
+From the release assets, unzip `go-clue-vim-*.zip` into:
 
 ```text
 ~/.vim/pack/go-clue/start/go-clue

@@ -87,7 +87,7 @@ type privateState struct {
 		t.Fatal("unused exported structs should stay indexed for @model completion")
 	}
 	fn := idx.Funcs["example.com/app.CurrentUser"]
-	if fn.Result != "User" || fn.Signature == "" || fn.Doc == "" {
+	if fn.Result != "example.com/app.User" || fn.Signature == "" || fn.Doc == "" {
 		t.Fatalf("expected function result metadata, got %#v", fn)
 	}
 	if _, ok := idx.Types["example.com/app.privateState"]; ok {
@@ -368,7 +368,7 @@ func Lookup() (Page, error) {
 		t.Fatalf("Names type = %q, want Box[string]", page.Fields["Names"].Type)
 	}
 	fn := idx.Funcs["example.com/app.Lookup"]
-	if fn.Result != "Page" || len(fn.Results) != 2 || fn.Results[1] != "error" {
+	if fn.Result != "example.com/app.Page" || len(fn.Results) != 2 || fn.Results[1] != "error" {
 		t.Fatalf("Lookup metadata = %#v, want Page,error result metadata", fn)
 	}
 }
